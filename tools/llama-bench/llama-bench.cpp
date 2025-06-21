@@ -17,6 +17,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include "../../ggml/src/ggml-cpu/ggml_profiler.h"
 
 #include "common.h"
 #include "ggml.h"
@@ -2019,6 +2020,8 @@ int main(int argc, char ** argv) {
     }
 
     llama_backend_free();
-
+#ifdef GGML_PERF_ENABLE
+    ggml_profiler_report();
+#endif
     return 0;
 }

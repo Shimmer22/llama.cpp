@@ -6,6 +6,7 @@
 
 #include "../../quants.h"
 #include "../../ggml-cpu-impl.h"
+#include "../../ggml_profiler.h"
 
 #include <math.h>
 #include <string.h>
@@ -1403,6 +1404,9 @@ void ggml_vec_dot_tq2_0_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const vo
 }
 
 void ggml_vec_dot_q2_K_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
+#ifdef GGML_PERF_ENABLE
+    ggml_profiler_start("ggml_vec_dot_q2_K_q8_K");
+#endif
     assert(nrc == 1);
     UNUSED(nrc);
     UNUSED(bx);
@@ -1768,9 +1772,17 @@ void ggml_vec_dot_q2_K_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const voi
     }
     *s = sumf;
 #endif
+#ifdef GGML_PERF_ENABLE
+    ggml_profiler_end("ggml_vec_dot_q2_K_q8_K");
+#endif
 }
 
 void ggml_vec_dot_q3_K_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
+    
+#ifdef GGML_PERF_ENABLE
+    ggml_profiler_start("ggml_vec_dot_q3_K_q8_K");
+#endif
+
     assert(n % QK_K == 0);
     assert(nrc == 1);
     UNUSED(nrc);
@@ -1787,7 +1799,11 @@ void ggml_vec_dot_q3_K_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const voi
     const int nb = n / QK_K;
 
 #if defined(__ARM_FEATURE_SVE)
-
+    static bool print_once;
+    if(!print_once){
+        print_once = !print_once;
+        printf("__ARM_FEATURE_SVE");
+    }
     uint32_t aux[3];
     uint32_t utmp[4];
 
@@ -1962,6 +1978,12 @@ void ggml_vec_dot_q3_K_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const voi
     *s = sum;
 
 #elif __ARM_NEON
+// #elif 0
+    static bool print_once;
+    if(!print_once){
+        print_once = !print_once;
+        printf("ggml is using __ARM_NEON\n");
+    }
 
     uint32_t aux[3];
     uint32_t utmp[4];
@@ -2119,10 +2141,15 @@ void ggml_vec_dot_q3_K_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const voi
     *s = sumf;
 
 #endif
-
+#ifdef GGML_PERF_ENABLE
+    ggml_profiler_end("ggml_vec_dot_q3_K_q8_K");
+#endif
 }
 
 void ggml_vec_dot_q4_K_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
+#ifdef GGML_PERF_ENABLE
+    ggml_profiler_start("ggml_vec_dot_q4_K_q8_K");
+#endif
     assert(n % QK_K == 0);
 #ifdef __ARM_FEATURE_MATMUL_INT8
     assert((nrc == 2) || (nrc == 1));
@@ -2485,6 +2512,9 @@ void ggml_vec_dot_q4_K_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const voi
     }
     for (int l = 0; l < 8; ++l) sumf += sums[l];
     *s = sumf;
+#endif
+#ifdef GGML_PERF_ENABLE
+    ggml_profiler_end("ggml_vec_dot_q4_K_q8_K");
 #endif
 }
 
@@ -3498,6 +3528,9 @@ void ggml_vec_dot_iq2_s_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const vo
 }
 
 void ggml_vec_dot_iq3_xxs_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
+#ifdef GGML_PERF_ENABLE
+    ggml_profiler_start("ggml_vec_dot_iq3_xxs_q8_K");
+#endif
     assert(n % QK_K == 0);
     assert(nrc == 1);
     UNUSED(nrc);
@@ -3583,9 +3616,15 @@ void ggml_vec_dot_iq3_xxs_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const 
     }
     *s = 0.25f * sumf;
 #endif
+#ifdef GGML_PERF_ENABLE
+    ggml_profiler_end("ggml_vec_dot_iq3_xxs_q8_K");
+#endif
 }
 
 void ggml_vec_dot_iq3_s_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
+#ifdef GGML_PERF_ENABLE
+    ggml_profiler_start("ggml_vec_dot_iq3_s_q8_K");
+#endif
     assert(n % QK_K == 0);
     assert(nrc == 1);
     UNUSED(nrc);
@@ -3822,6 +3861,9 @@ void ggml_vec_dot_iq1_s_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const vo
 
     *s = sumf;
 
+#endif
+#ifdef GGML_PERF_ENABLE
+    ggml_profiler_end("ggml_vec_dot_iq3_s_q8_K");
 #endif
 }
 

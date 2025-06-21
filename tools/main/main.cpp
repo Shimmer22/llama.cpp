@@ -5,6 +5,7 @@
 #include "sampling.h"
 #include "llama.h"
 #include "chat.h"
+#include "../../ggml/src/ggml-cpu/ggml_profiler.h"
 
 #include <cstdio>
 #include <cstring>
@@ -70,6 +71,10 @@ static void sigint_handler(int signo) {
             need_insert_eot = true;
         } else {
             console::cleanup();
+#ifdef GGML_PERF_ENABLE
+            LOG("\n");
+            ggml_profiler_report();
+#endif
             LOG("\n");
             common_perf_print(*g_ctx, *g_smpl);
 
@@ -536,6 +541,10 @@ int main(int argc, char ** argv) {
     // single-token antiprompts
     std::vector<llama_token> antiprompt_token;
 
+#ifdef GGML_PERF_ENABLE
+                ggml_profiler_start("token generate");
+#endif
+
     for (const std::string & antiprompt : params.antiprompt) {
         auto ids = ::common_tokenize(ctx, antiprompt, false, true);
         if (ids.size() == 1) {
@@ -679,6 +688,9 @@ int main(int argc, char ** argv) {
                 if (params.n_print > 0 && n_past % params.n_print == 0) {
                     LOG_DBG("\n\033[31mTokens consumed so far = %d / %d \033[0m\n", n_past, n_ctx);
                 }
+#ifdef GGML_PERF_ENABLE
+        ggml_profiler_end("token generate");
+#endif
             }
 
             if (!embd.empty() && !path_session.empty()) {
@@ -832,6 +844,10 @@ int main(int argc, char ** argv) {
             }
 
             if ((n_past > 0 || waiting_for_first_input) && is_interacting) {
+#ifdef GGML_PERF_ENABLE
+                LOG("\n");
+                ggml_profiler_report();
+#endif
                 LOG_DBG("waiting for user input\n");
 
                 if (params.conversation_mode) {
@@ -966,6 +982,10 @@ int main(int argc, char ** argv) {
     }
 
     LOG("\n\n");
+#ifdef GGML_PERF_ENABLE
+    ggml_profiler_report();
+#endif
+    // 官方的性能探查
     common_perf_print(ctx, smpl);
 
     common_sampler_free(smpl);

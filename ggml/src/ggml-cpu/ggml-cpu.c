@@ -14,6 +14,7 @@
 #include "vec.h"
 #include "ops.h"
 #include "ggml.h"
+#include "ggml_profiler.h"
 
 #if defined(_MSC_VER) || defined(__MINGW32__)
 #include <malloc.h> // using malloc.h with MSC/MINGW
@@ -34,6 +35,7 @@
 #include <limits.h>
 #include <stdarg.h>
 #include <signal.h>
+#include <sys/time.h>
 #if defined(__gnu_linux__)
 #include <syscall.h>
 #endif
@@ -1262,6 +1264,9 @@ static void ggml_compute_forward_mul_mat(
         const struct ggml_compute_params * params,
               struct ggml_tensor * dst) {
 
+#ifdef GGML_PERF_ENABLE
+    ggml_profiler_start("ggml_compute_forward_mul_mat");
+#endif
     const struct ggml_tensor * src0 = dst->src[0];
     const struct ggml_tensor * src1 = dst->src[1];
 
@@ -1450,6 +1455,9 @@ UseGgmlGemm2:;
 
         current_chunk = atomic_fetch_add_explicit(&params->threadpool->current_chunk, 1, memory_order_relaxed);
     }
+#ifdef GGML_PERF_ENABLE
+    ggml_profiler_end("ggml_compute_forward_mul_mat");
+#endif
 }
 
 // ggml_compute_forward_mul_mat_id

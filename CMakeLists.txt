@@ -64,6 +64,13 @@ endif()
 option(LLAMA_ALL_WARNINGS           "llama: enable all compiler warnings"                   ON)
 option(LLAMA_ALL_WARNINGS_3RD_PARTY "llama: enable all compiler warnings in 3rd party libs" OFF)
 
+# custom profiler option
+option(GGML_ENABLE_PROFILER "Enable ggml internal profiler" ON)
+if (GGML_ENABLE_PROFILER)
+    add_definitions(-DGGML_PERF_ENABLE)
+endif()
+
+
 # build
 option(LLAMA_FATAL_WARNINGS "llama: enable -Werror flag" OFF)
 
