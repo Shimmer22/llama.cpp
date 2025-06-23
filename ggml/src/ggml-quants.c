@@ -248,10 +248,6 @@ void quantize_row_q8_1_ref(const float * GGML_RESTRICT x, block_q8_1 * GGML_REST
 }
 
 void dequantize_row_q4_0(const block_q4_0 * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k) {
-#ifdef GGML_PERF_ENABLE
-    static __thread int64_t call_id = 0;
-    ggml_profiler_start_sampled("dequantize_row_q4_0", call_id);
-#endif
     static const int qk = QK4_0;
 
     assert(k % qk == 0);
@@ -269,9 +265,6 @@ void dequantize_row_q4_0(const block_q4_0 * GGML_RESTRICT x, float * GGML_RESTRI
             y[i*qk + j + qk/2] = x1*d;
         }
     }
-#ifdef GGML_PERF_ENABLE
-    ggml_profiler_end_sampled("dequantize_row_q4_0", call_id);
-#endif
 }
 
 void dequantize_row_q4_1(const block_q4_1 * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k) {

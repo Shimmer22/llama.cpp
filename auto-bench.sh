@@ -31,13 +31,13 @@ model_path="./models/llama-2-7b/llama-2-7b-chat.${quant}.gguf"
 # 输出配置
 echo "Benchmarking model: $model_path"
 echo "Threads: $threads"
-echo "Prompts: $parallel"
+echo "Prompts: $prompts"
 echo "Tokens: $n_tokens"
 
 # 启动 llama-bench
 ./build/bin/llama-bench \
   -m "$model_path" \
-  -p "$parallel" \
+  -p "$prompts" \
   -n "$n_tokens" \
   -t "$threads"
 # test
