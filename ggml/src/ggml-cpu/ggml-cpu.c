@@ -1721,7 +1721,7 @@ static void ggml_compute_forward_mul_mat_id(
 }
 
 /////////////////////////////////
-
+// here comes real compute core for every node.
 static void ggml_compute_forward(struct ggml_compute_params * params, struct ggml_tensor * tensor) {
     GGML_ASSERT(params);
 
@@ -3115,6 +3115,7 @@ struct ggml_threadpool * ggml_threadpool_new(struct ggml_threadpool_params * tpp
     return ggml_threadpool_new_impl(tpp, NULL, NULL);
 }
 
+// main compute function
 enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cplan * cplan) {
     ggml_cpu_init();
 
@@ -3143,7 +3144,7 @@ enum ggml_status ggml_graph_compute(struct ggml_cgraph * cgraph, struct ggml_cpl
         threadpool->ec               = GGML_STATUS_SUCCESS;
     }
 
-#ifdef GGML_USE_OPENMP
+#ifdef GGML_USE_OPENMP // support OPENMP
     if (n_threads > 1) {
         #pragma omp parallel num_threads(n_threads)
         {

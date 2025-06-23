@@ -169,7 +169,7 @@ static enum ggml_status ggml_backend_cpu_graph_compute(ggml_backend_t backend, s
     cplan.abort_callback      = cpu_ctx->abort_callback;
     cplan.abort_callback_data = cpu_ctx->abort_callback_data;
 
-    return ggml_graph_compute(cgraph, &cplan);
+    return ggml_graph_compute(cgraph, &cplan); // into .c file
 }
 
 static const struct ggml_backend_i ggml_backend_cpu_i = {
@@ -183,7 +183,7 @@ static const struct ggml_backend_i ggml_backend_cpu_i = {
     /* .graph_plan_free         = */ ggml_backend_cpu_graph_plan_free,
     /* .graph_plan_update       = */ NULL,
     /* .graph_plan_compute      = */ ggml_backend_cpu_graph_plan_compute,
-    /* .graph_compute           = */ ggml_backend_cpu_graph_compute,
+    /* .graph_compute           = */ ggml_backend_cpu_graph_compute, // main cal happen in
     /* .event_record            = */ NULL,
     /* .event_wait              = */ NULL,
 };

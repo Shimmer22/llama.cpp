@@ -7,12 +7,22 @@
 extern "C" {
 #endif
 
+// 初始化性能分析器
 void ggml_profiler_init(void);
-void ggml_profiler_start(const char * name);
-void ggml_profiler_end(const char * name);
+
+// 低开销算子级测量 (不支持嵌套)
+void ggml_profiler_start(const char* name);
+void ggml_profiler_end(const char* name);
+
+// 采样模式控制 (基于低开销测量)
+void ggml_profiler_set_sampling_rate(int rate);
+int  ggml_profiler_get_sampling_rate(void);
+void ggml_profiler_start_sampled(const char* name, int64_t call_id);
+void ggml_profiler_end_sampled(const char* name, int64_t call_id);
+
+// 生成性能报告
 void ggml_profiler_report(void);
-void ggml_profiler_reset(void);
-void ggml_profiler_save_csv(const char * filename);
+void ggml_profiler_report_sorted(void);
 
 #ifdef __cplusplus
 }

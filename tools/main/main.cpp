@@ -72,8 +72,7 @@ static void sigint_handler(int signo) {
         } else {
             console::cleanup();
 #ifdef GGML_PERF_ENABLE
-            LOG("\n");
-            ggml_profiler_report();
+            ggml_profiler_report_sorted();
 #endif
             LOG("\n");
             common_perf_print(*g_ctx, *g_smpl);
@@ -89,6 +88,10 @@ static void sigint_handler(int signo) {
 #endif
 
 int main(int argc, char ** argv) {
+#ifdef GGML_PERF_ENABLE
+    ggml_profiler_init();
+    ggml_profiler_start("main: init proc");
+#endif
     common_params params;
     g_params = &params;
     if (!common_params_parse(argc, argv, params, LLAMA_EXAMPLE_MAIN, print_usage)) {
@@ -137,7 +140,9 @@ int main(int argc, char ** argv) {
     g_model = &model;
     g_ctx = &ctx;
     g_smpl = &smpl;
-
+#ifdef GGML_PERF_ENABLE
+        ggml_profiler_end("main: init proc");
+#endif
     std::vector<common_chat_msg> chat_msgs;
 
     // load the model and apply lora adapter, if any
@@ -542,7 +547,7 @@ int main(int argc, char ** argv) {
     std::vector<llama_token> antiprompt_token;
 
 #ifdef GGML_PERF_ENABLE
-                ggml_profiler_start("token generate");
+    ggml_profiler_start("token generate");
 #endif
 
     for (const std::string & antiprompt : params.antiprompt) {
@@ -845,8 +850,11 @@ int main(int argc, char ** argv) {
 
             if ((n_past > 0 || waiting_for_first_input) && is_interacting) {
 #ifdef GGML_PERF_ENABLE
-                LOG("\n");
-                ggml_profiler_report();
+                printf("\n===== 算子级性能报告 =====\n");
+                ggml_profiler_report_sorted();
+                
+                // printf("\n===== 完整调用链分析 =====\n");
+                // ggml_profiler_report_call_stack();
 #endif
                 LOG_DBG("waiting for user input\n");
 
@@ -982,9 +990,6 @@ int main(int argc, char ** argv) {
     }
 
     LOG("\n\n");
-#ifdef GGML_PERF_ENABLE
-    ggml_profiler_report();
-#endif
     // 官方的性能探查
     common_perf_print(ctx, smpl);
 

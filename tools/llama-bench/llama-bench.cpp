@@ -2021,7 +2021,7 @@ int main(int argc, char ** argv) {
 
     llama_backend_free();
 #ifdef GGML_PERF_ENABLE
-    ggml_profiler_report();
+    ggml_profiler_report_sorted();
 #endif
     return 0;
 }

@@ -2815,6 +2815,11 @@ int32_t llama_encode(
 int32_t llama_decode(
         llama_context * ctx,
           llama_batch   batch) {
+    static bool print_once = false;
+    if (!print_once) {
+        LLAMA_LOG_INFO("llama_decode: ctx type = %s, call ctx->decode (llama_context::decode)\n", typeid(*ctx).name());
+        print_once = true;
+    }
     const int ret = ctx->decode(batch);
     if (ret != 0 && ret != 1) {
         LLAMA_LOG_ERROR("%s: failed to decode, ret = %d\n", __func__, ret);
