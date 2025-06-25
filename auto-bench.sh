@@ -4,7 +4,7 @@
 quant="Q4_K_M"
 
 # 默认线程组设置（可以覆盖）
-threads="4,6,8"
+threads="6"
 
 # 默认并发并行度
 prompts=16

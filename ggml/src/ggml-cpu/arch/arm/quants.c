@@ -2399,11 +2399,11 @@ void ggml_vec_dot_q4_K_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const voi
     }
     *s = sumf;
 #elif defined __ARM_NEON
-    static bool print_once;
-    if(!print_once){
-        print_once = !print_once;
-        printf("[quants.c]: Q4 -- ggml is using __ARM_NEON\n");
-    }
+    // static bool print_once;
+    // if(!print_once){
+    //     print_once = !print_once;
+    //     printf("[quants.c]: Q4 -- ggml is using __ARM_NEON\n");
+    // }
 #ifdef GGML_PERF_ENABLE
     static __thread int64_t call_id_2 = 0;
     ggml_profiler_start_sampled("ggml_vec_dot_q4_K_q8_K: NEON", call_id_2);

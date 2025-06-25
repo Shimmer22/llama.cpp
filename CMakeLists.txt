@@ -70,6 +70,18 @@ if (GGML_ENABLE_PROFILER)
     add_definitions(-DGGML_PERF_ENABLE)
 endif()
 
+# compare custom GEMM acc with original
+option(GGML_ARM_ACC_COMPARE_ENABLE "Enable gemm acc compare" ON)
+if (GGML_ARM_ACC_COMPARE_ENABLE)
+    add_definitions(-DGGML_ARM_ACC_COMPARE_ENABLE)
+endif()
+
+# custom GEMM accelearte for ARM v8
+option(GGML_ARM_ACC_ENABLE "Enable gemm acc on ARM" ON)
+if (GGML_ARM_ACC_ENABLE)
+    add_definitions(-DGGML_ARM_ACC_ENABLE)
+endif()
+
 
 # build
 option(LLAMA_FATAL_WARNINGS "llama: enable -Werror flag" OFF)

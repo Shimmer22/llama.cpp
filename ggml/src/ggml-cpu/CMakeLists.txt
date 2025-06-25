@@ -101,6 +101,7 @@ function(ggml_add_cpu_backend_variant_impl tag_name)
     if (GGML_SYSTEM_ARCH STREQUAL "ARM")
         message(STATUS "ARM detected")
         list(APPEND GGML_CPU_SOURCES
+            ggml-cpu/arch/arm/arm-acc-quants.c
             ggml-cpu/arch/arm/quants.c
             ggml-cpu/arch/arm/repack.cpp
             )
@@ -202,6 +203,7 @@ function(ggml_add_cpu_backend_variant_impl tag_name)
                     endif()
                     list(APPEND ARCH_FLAGS "-march=${ARM_MCPU}${ARCH_TAGS}")
                     ggml_add_cpu_backend_features(${GGML_CPU_NAME} arm ${ARCH_DEFINITIONS})
+                    message(ARCH_DEFINITIONS)
                 endif()
             endif()
 

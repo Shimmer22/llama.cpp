@@ -30,7 +30,7 @@ static __thread uint64_t t0; // 用于计时的线程局部起始时间
 
 static thread_profiler_t* all_thread_profilers[MAX_THREADS];
 static pthread_mutex_t all_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
-static int sampling_rate = 500;
+static int sampling_rate = 200;
 static int num_registered_threads = 0; // Keep track of registered threads
 
 // String hashing function (unchanged)
@@ -195,13 +195,13 @@ void ggml_profiler_report(void) {
     combine_profiler_data(combined);
 
     printf("\n===== GGML Profiler Report =====\n");
-    printf("%-30s %-15s %-20s %-20s\n", "Function", "Calls", "Total (ms)", "Avg (us)");
+    printf("%-40s %-15s %-20s %-20s\n", "Function", "Calls", "Total (ms)", "Avg (us)");
 
     for (int i = 0; i < HASH_SIZE; ++i) {
         if (combined[i].name != NULL) {
             double total_ms = combined[i].total_ns / 1e6;
             double avg_us = (combined[i].call_count > 0) ? (combined[i].total_ns / combined[i].call_count / 1e3) : 0.0;
-            printf("%-30s %-15ld %-20.3f %-20.3f\n",
+            printf("%-40s %-15ld %-20.3f %-20.3f\n",
                    combined[i].name,
                    combined[i].call_count,
                    total_ms,
@@ -238,12 +238,12 @@ void ggml_profiler_report_sorted() {
     }
 
     printf("\n===== GGML Profiler Sorted Report =====\n");
-    printf("%-30s %-15s %-20s %-20s\n", "Function", "Calls", "Total (ms)", "Avg (us)");
+    printf("%-40s %-15s %-20s %-20s\n", "Function", "Calls", "Total (ms)", "Avg (us)");
     
     for (int i = 0; i < count; i++) {
         double total_ms = entries[i].total_ns / 1e6;
         double avg_us = entries[i].call_count ? entries[i].total_ns / entries[i].call_count / 1e3 : 0;
-        printf("%-30s %-15ld %-20.3f %-20.3f\n",
+        printf("%-40s %-15ld %-20.3f %-20.3f\n",
                entries[i].name,
                entries[i].call_count,
                total_ms,

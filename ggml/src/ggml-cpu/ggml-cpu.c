@@ -265,7 +265,13 @@ static const struct ggml_type_traits_cpu type_traits_cpu[GGML_TYPE_COUNT] = {
     },
     [GGML_TYPE_Q4_K] = {
         .from_float               = quantize_row_q4_K,
-        .vec_dot                  = ggml_vec_dot_q4_K_q8_K,
+#if defined (GGML_ARM_ACC_COMPARE_ENABLE)
+        .vec_dot                  = ggml_vec_dot_q4_K_q8_K_compare, // compare mode with [no simd], [original NEON]. [ARM acc]. cost lots of time!
+#elif defined (GGML_ARM_ACC_ENABLE)
+        .vec_dot                  = ggml_vec_dot_q4_K_q8_K_arm_acc, // using arm acc
+#else
+        .vec_dot                  = ggml_vec_dot_q4_K_q8_K,         // original GEMM
+#endif
         .vec_dot_type             = GGML_TYPE_Q8_K,
 #if defined (__ARM_FEATURE_MATMUL_INT8)
         .nrows                    = 2,
