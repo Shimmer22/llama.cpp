@@ -74,14 +74,22 @@ endif()
 option(GGML_ARM_ACC_COMPARE_ENABLE "Enable gemm acc compare" ON)
 if (GGML_ARM_ACC_COMPARE_ENABLE)
     add_definitions(-DGGML_ARM_ACC_COMPARE_ENABLE)
+    message("Enable gemm acc compare, decode will be slower!")
 endif()
 
 # custom GEMM accelearte for ARM v8
 option(GGML_ARM_ACC_ENABLE "Enable gemm acc on ARM" ON)
 if (GGML_ARM_ACC_ENABLE)
     add_definitions(-DGGML_ARM_ACC_ENABLE)
+    message("Enable gemm acc on ARM, using custom GEMM now!")
 endif()
 
+# pure C fallback implementation for validation
+option(GGML_ARM_ACC_PURE_C_ENABLE "Enable naive pure-C dot product implementation" OFF)
+if (GGML_ARM_ACC_PURE_C_ENABLE)
+    add_definitions(-DGGML_ARM_ACC_PURE_C_ENABLE)
+    message("Enable naive pure-C implementation for GEMM dot product!")
+endif()
 
 # build
 option(LLAMA_FATAL_WARNINGS "llama: enable -Werror flag" OFF)

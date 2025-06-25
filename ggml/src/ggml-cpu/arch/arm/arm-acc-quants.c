@@ -40,7 +40,7 @@ static const uint64_t table_b2b_1[1 << 8] = { B8(10, 00) }; // (!b) << 4
 
 
 // Generic C implementation with timing
-static void ggml_vec_dot_q4_K_q8_K_c(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
+void ggml_vec_dot_q4_K_q8_K_c(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
 #ifdef GGML_PERF_ENABLE
     static __thread int64_t call_id_c = 0;
     ggml_profiler_start_sampled("ggml_vec_dot_q4_K_q8_K_c", call_id_c);

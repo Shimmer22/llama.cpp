@@ -269,6 +269,8 @@ static const struct ggml_type_traits_cpu type_traits_cpu[GGML_TYPE_COUNT] = {
         .vec_dot                  = ggml_vec_dot_q4_K_q8_K_compare, // compare mode with [no simd], [original NEON]. [ARM acc]. cost lots of time!
 #elif defined (GGML_ARM_ACC_ENABLE)
         .vec_dot                  = ggml_vec_dot_q4_K_q8_K_arm_acc, // using arm acc
+#elif defined (GGML_ARM_ACC_PURE_C_ENABLE)
+        .vec_dot                  = ggml_vec_dot_q4_K_q8_K_c,       // naive pure-C dot product
 #else
         .vec_dot                  = ggml_vec_dot_q4_K_q8_K,         // original GEMM
 #endif
