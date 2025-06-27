@@ -37,6 +37,7 @@
 #include "ggml-cuda/ssm-scan.cuh"
 #include "ggml-cuda/sum.cuh"
 #include "ggml-cuda/sumrows.cuh"
+#include "ggml-cuda/mean.cuh"
 #include "ggml-cuda/tsembd.cuh"
 #include "ggml-cuda/unary.cuh"
 #include "ggml-cuda/upscale.cuh"
@@ -99,8 +100,7 @@ int ggml_cuda_get_device() {
 static cudaError_t ggml_cuda_device_malloc(void ** ptr, size_t size, int device) {
     ggml_cuda_set_device(device);
     cudaError_t err;
-    if (getenv("GGML_CUDA_ENABLE_UNIFIED_MEMORY") != nullptr)
-    {
+    if (getenv("GGML_CUDA_ENABLE_UNIFIED_MEMORY") != nullptr) {
         err = cudaMallocManaged(ptr, size);
 #if defined(GGML_USE_HIP)
         if (err == hipSuccess) {
@@ -118,9 +118,7 @@ static cudaError_t ggml_cuda_device_malloc(void ** ptr, size_t size, int device)
             err = cudaMalloc(ptr, size);
         }
 #endif // defined(GGML_USE_HIP)
-    }
-    else
-    {
+    } else {
         err = cudaMalloc(ptr, size);
     }
     return err;
@@ -1229,9 +1227,12 @@ static void ggml_cuda_op_mul_mat_cublas(
 
     const int cc = ggml_cuda_info().devices[id].cc;
 
+    const bool supports_bf16 = GGML_CUDA_CC_IS_NVIDIA(cc) || GGML_CUDA_CC_IS_AMD(cc) ||
+        (GGML_CUDA_CC_IS_MTHREADS(cc) && cc >= GGML_CUDA_CC_QY2);
+
     const bool use_fp16 = (src0->type == GGML_TYPE_F16 || ggml_is_quantized(src0->type)) && ggml_is_contiguous(src0) && row_diff == src0->ne[1] && dst->op_params[0] == GGML_PREC_DEFAULT;
 
-    if (src0->type == GGML_TYPE_BF16 && ggml_is_contiguous(src0) && row_diff == src0->ne[1]) {
+    if (supports_bf16 && src0->type == GGML_TYPE_BF16 && ggml_is_contiguous(src0) && row_diff == src0->ne[1]) {
         ggml_cuda_pool_alloc<nv_bfloat16> src1_as_bf16(ctx.pool(id));
         if (src1->type != GGML_TYPE_BF16) {
             const to_bf16_cuda_t to_bf16_cuda = ggml_get_to_bf16_cuda(src1->type);
@@ -1259,7 +1260,7 @@ static void ggml_cuda_op_mul_mat_cublas(
 
         const to_fp32_cuda_t to_fp32_cuda = ggml_get_to_fp32_cuda(GGML_TYPE_BF16);
         to_fp32_cuda(dst_bf16.get(), dst_dd_i, row_diff*src1_ncols, stream);
-    } else if (((GGML_CUDA_CC_IS_NVIDIA(cc) && cc >= GGML_CUDA_CC_VOLTA) || GGML_CUDA_CC_IS_AMD(cc)) && use_fp16) {
+    } else if (fast_fp16_hardware_available(cc) && use_fp16) {
         // convert src0 and src1 to fp16, multiply as fp16, convert dst to fp32
         ggml_cuda_pool_alloc<half> src0_as_f16(ctx.pool(id));
         if (src0->type != GGML_TYPE_F16) {
@@ -1945,16 +1946,14 @@ static void ggml_cuda_mul_mat(ggml_backend_cuda_context & ctx, const ggml_tensor
         && ggml_nbytes(src0) != ggml_backend_buffer_get_alloc_size(src0->buffer, src0) && src0->view_src;
 
     bool use_mul_mat_vec   = (src0->type == GGML_TYPE_F32 || src0->type == GGML_TYPE_F16 || src0->type == GGML_TYPE_BF16)
-        && src1->type == GGML_TYPE_F32 && dst->type == GGML_TYPE_F32
-        && src0->ne[0] % 2 == 0 && src1->ne[1] == 1;
+        && src1->type == GGML_TYPE_F32 && dst->type == GGML_TYPE_F32;
     bool use_mul_mat_vec_q = ggml_is_quantized(src0->type) && !bad_padding_clear
         && src1->type == GGML_TYPE_F32 && dst->type == GGML_TYPE_F32
         && src1->ne[1] <= MMVQ_MAX_BATCH_SIZE;
     bool use_mul_mat_q     = ggml_is_quantized(src0->type) && !bad_padding_clear
         && src1->type == GGML_TYPE_F32 && dst->type == GGML_TYPE_F32;
 
-    bool any_gpus_with_slow_fp16   = false;
-    bool any_gpus_without_fp16_mma = false;
+    bool any_gpus_with_slow_fp16 = false;
 
     if (split) {
         ggml_backend_cuda_split_buffer_type_context * buft_ctx = (ggml_backend_cuda_split_buffer_type_context *) src0->buffer->buft->context;
@@ -1965,16 +1964,16 @@ static void ggml_cuda_mul_mat(ggml_backend_cuda_context & ctx, const ggml_tensor
                 continue;
             }
 
-            const int cc              = ggml_cuda_info().devices[id].cc;
-            use_mul_mat_q             = use_mul_mat_q             && ggml_cuda_should_use_mmq(src0->type, cc, src1->ne[1]);
-            any_gpus_with_slow_fp16   = any_gpus_with_slow_fp16   || !fast_fp16_hardware_available(cc);
-            any_gpus_without_fp16_mma = any_gpus_without_fp16_mma || !fp16_mma_hardware_available(cc);
+            const int cc            = ggml_cuda_info().devices[id].cc;
+            use_mul_mat_q           = use_mul_mat_q             && ggml_cuda_should_use_mmq(src0->type, cc, src1->ne[1]);
+            use_mul_mat_vec         = use_mul_mat_vec           && ggml_cuda_should_use_mmv(src0->type, cc, src0->ne, src1->ne[1]);
+            any_gpus_with_slow_fp16 = any_gpus_with_slow_fp16   || !fast_fp16_hardware_available(cc);
         }
     } else {
-        const int cc              = ggml_cuda_info().devices[ctx.device].cc;
-        use_mul_mat_q             = use_mul_mat_q             && ggml_cuda_should_use_mmq(src0->type, cc, src1->ne[1]);
-        any_gpus_with_slow_fp16   = any_gpus_with_slow_fp16   || !fast_fp16_hardware_available(cc);
-        any_gpus_without_fp16_mma = any_gpus_without_fp16_mma || !fp16_mma_hardware_available(cc);
+        const int cc            = ggml_cuda_info().devices[ctx.device].cc;
+        use_mul_mat_q           = use_mul_mat_q             && ggml_cuda_should_use_mmq(src0->type, cc, src1->ne[1]);
+        use_mul_mat_vec         = use_mul_mat_vec           && ggml_cuda_should_use_mmv(src0->type, cc, src0->ne, src1->ne[1]);
+        any_gpus_with_slow_fp16 = any_gpus_with_slow_fp16   || !fast_fp16_hardware_available(cc);
     }
 
     // debug helpers
@@ -1985,7 +1984,7 @@ static void ggml_cuda_mul_mat(ggml_backend_cuda_context & ctx, const ggml_tensor
     //printf("src0 is contiguous %d, transposed %d, type = %s, name = %s\n", ggml_is_contiguous(src0), ggml_is_transposed(src0), ggml_type_name(src0->type), src0->name);
     //printf("src1 is contiguous %d, transposed %d, type = %s, name = %s\n", ggml_is_contiguous(src1), ggml_is_transposed(src1), ggml_type_name(src1->type), src1->name);
 
-    if (!split && use_mul_mat_vec && (src0->ne[1] <= MMV_MAX_ROWS || any_gpus_without_fp16_mma)) {
+    if (!split && use_mul_mat_vec) {
         // the custom F16 vector kernel can be used over batched cuBLAS GEMM
         // but this is only faster for GPUs without tensor cores or with a thin src0 matrix (particularly KQV in attention)
         ggml_cuda_mul_mat_vec(ctx, src0, src1, nullptr, dst);
@@ -2356,6 +2355,9 @@ static bool ggml_cuda_compute_forward(ggml_backend_cuda_context & ctx, struct gg
             break;
         case GGML_OP_SUM_ROWS:
             ggml_cuda_op_sum_rows(ctx, dst);
+            break;
+        case GGML_OP_MEAN:
+            ggml_cuda_op_mean(ctx, dst);
             break;
         case GGML_OP_SSM_CONV:
             ggml_cuda_op_ssm_conv(ctx, dst);
@@ -3062,9 +3064,16 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
                     return false;
                 }
 #ifdef GGML_USE_MUSA
-                if (b->type == GGML_TYPE_F16 && b->ne[2]*b->ne[3] > 1 &&
-                    !ggml_is_transposed(a) && !ggml_is_transposed(b)) {
-                    return false;
+                const int cc = ggml_cuda_info().devices[dev_ctx->device].cc;
+                if (b->ne[2]*b->ne[3] > 1 && !ggml_is_transposed(a) && !ggml_is_transposed(b)) {
+                    if (GGML_CUDA_CC_IS_QY1(cc) && op->op == GGML_OP_MUL_MAT &&
+                            a->type == GGML_TYPE_F16 && b->type == GGML_TYPE_F16) {
+                        return false;
+                    }
+                    if (GGML_CUDA_CC_IS_QY2(cc) && op->op == GGML_OP_MUL_MAT_ID &&
+                            a->type == GGML_TYPE_Q2_K && b->type == GGML_TYPE_F32) {
+                        return false;
+                    }
                 }
 #endif // GGML_USE_MUSA
                 switch (a->type) {
@@ -3091,11 +3100,6 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
                     case GGML_TYPE_IQ4_NL:
                     case GGML_TYPE_IQ4_XS:
                     case GGML_TYPE_BF16:
-#ifdef GGML_USE_MUSA
-                        if (a->type == GGML_TYPE_Q3_K) {
-                            return false;
-                        }
-#endif // GGML_USE_MUSA
                         return true;
                     default:
                         return false;
@@ -3260,6 +3264,7 @@ static bool ggml_backend_cuda_device_supports_op(ggml_backend_dev_t dev, const g
         case GGML_OP_POOL_2D:
         case GGML_OP_SUM:
         case GGML_OP_SUM_ROWS:
+        case GGML_OP_MEAN:
         case GGML_OP_ARGSORT:
         case GGML_OP_ACC:
             return true;
