@@ -23,6 +23,8 @@ void ggml_profiler_end_sampled(const char* name, int64_t call_id);
 // 生成性能报告
 void ggml_profiler_report(void);
 void ggml_profiler_report_sorted(void);
+void ggml_profiler_report_csv(const char* filename);
+void ggml_profiler_free(void);
 
 #ifdef __cplusplus
 }

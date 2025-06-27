@@ -212,7 +212,7 @@ void ggml_profiler_report(void) {
 }
 
 // Generate sorted performance report (unchanged except for combine_profiler_data loop and avg_us calculation)
-void ggml_profiler_report_sorted() {
+void ggml_profiler_report_sorted(void) {
     profile_entry_t combined[HASH_SIZE] = {{0}};
     combine_profiler_data(combined);
     
@@ -252,6 +252,35 @@ void ggml_profiler_report_sorted() {
     printf("=============================================\n");
 }
 
+// Write performance data to CSV file
+void ggml_profiler_report_csv(const char* filename) {
+    profile_entry_t combined[HASH_SIZE] = {{0}};
+    combine_profiler_data(combined);
+
+    FILE* fp = fopen(filename, "w");
+    if (fp == NULL) {
+        fprintf(stderr, "Error: Failed to open file %s for writing.\n", filename);
+        return;
+    }
+
+    // Write CSV header
+    fprintf(fp, "Function,Calls,Total_ms,Avg_us\n");
+
+    // Write data
+    for (int i = 0; i < HASH_SIZE; ++i) {
+        if (combined[i].name != NULL) {
+            double total_ms = combined[i].total_ns / 1e6;
+            double avg_us = (combined[i].call_count > 0) ? (combined[i].total_ns / combined[i].call_count / 1e3) : 0.0;
+            fprintf(fp, "\"%s\",%ld,%.3f,%.3f\n",
+                    combined[i].name,
+                    combined[i].call_count,
+                    total_ms,
+                    avg_us);
+        }
+    }
+
+    fclose(fp);
+}
 
 // Add a cleanup function to free allocated memory
 void ggml_profiler_free(void) {
