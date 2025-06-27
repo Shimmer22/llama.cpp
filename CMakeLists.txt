@@ -71,24 +71,24 @@ if (GGML_ENABLE_PROFILER)
 endif()
 
 # compare custom GEMM acc with original
-option(GGML_ARM_ACC_COMPARE_ENABLE "Enable gemm acc compare" ON)
+option(GGML_ARM_ACC_COMPARE_ENABLE "Enable GEMM acc compare with original" ON)
 if (GGML_ARM_ACC_COMPARE_ENABLE)
     add_definitions(-DGGML_ARM_ACC_COMPARE_ENABLE)
-    message("Enable gemm acc compare, decode will be slower!")
-endif()
-
-# custom GEMM accelearte for ARM v8
-option(GGML_ARM_ACC_ENABLE "Enable gemm acc on ARM" ON)
-if (GGML_ARM_ACC_ENABLE)
-    add_definitions(-DGGML_ARM_ACC_ENABLE)
-    message("Enable gemm acc on ARM, using custom GEMM now!")
+    message(STATUS "Enabled: GEMM acc compare (decode will be slower)")
 endif()
 
 # pure C fallback implementation for validation
 option(GGML_ARM_ACC_PURE_C_ENABLE "Enable naive pure-C dot product implementation" OFF)
 if (GGML_ARM_ACC_PURE_C_ENABLE)
     add_definitions(-DGGML_ARM_ACC_PURE_C_ENABLE)
-    message("Enable naive pure-C implementation for GEMM dot product!")
+    message(STATUS "Enabled: naive pure-C implementation for GEMM dot product")
+endif()
+
+# custom GEMM accelerate for ARM v8, only if others are OFF
+option(GGML_ARM_ACC_ENABLE "Enable GEMM acc on ARM" ON)
+if (GGML_ARM_ACC_ENABLE AND NOT GGML_ARM_ACC_COMPARE_ENABLE AND NOT GGML_ARM_ACC_PURE_C_ENABLE)
+    add_definitions(-DGGML_ARM_ACC_ENABLE)
+    message(STATUS "Enabled: ARM-optimized GEMM acceleration")
 endif()
 
 # build

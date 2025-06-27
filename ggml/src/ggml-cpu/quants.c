@@ -4,6 +4,7 @@
 #include "ggml-cpu-impl.h"
 #include "ggml-quants.h"
 #include "quants.h"
+#include "ggml_profiler.h"
 
 #include "arch-fallback.h"
 
@@ -512,19 +513,23 @@ void ggml_vec_dot_q3_K_q8_K_generic(int n, float * GGML_RESTRICT s, size_t bs, c
 }
 
 void ggml_vec_dot_q4_K_q8_K_generic(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
-    assert(n % QK_K == 0);
-    assert(nrc == 1);
+#ifdef GGML_PERF_ENABLE
+    static __thread int64_t call_id = 0;
+    ggml_profiler_start_sampled("ggml_vec_dot_q4_K_q8_K_generic", call_id);
+#endif
+    assert(n % QK_K == 0);                      // 向量的长度是分块QK_K的整数倍
+    assert(nrc == 1);                           // 向量并行(IMM8)
     UNUSED(nrc);
     UNUSED(bx);
     UNUSED(by);
     UNUSED(bs);
 
-    const block_q4_K * GGML_RESTRICT x = vx;
-    const block_q8_K * GGML_RESTRICT y = vy;
+    const block_q4_K * GGML_RESTRICT x = vx;    // 解码前量化数据
+    const block_q8_K * GGML_RESTRICT y = vy;    // 解码后数据Q8_K
 
-    const int nb = n / QK_K;
+    const int nb = n / QK_K;                    // 需要进行多少次分块运算
 
-    static const uint32_t kmask1 = 0x3f3f3f3f;
+    static const uint32_t kmask1 = 0x3f3f3f3f;  // scale解包掩码
     static const uint32_t kmask2 = 0x0f0f0f0f;
     static const uint32_t kmask3 = 0x03030303;
 
@@ -541,10 +546,10 @@ void ggml_vec_dot_q4_K_q8_K_generic(int n, float * GGML_RESTRICT s, size_t bs, c
 
     float sumf = 0;
     for (int i = 0; i < nb; ++i) {
-        const uint8_t * GGML_RESTRICT q4 = x[i].qs;
+        const uint8_t * GGML_RESTRICT q4 = x[i].qs;                             // 解包过程
         const  int8_t * GGML_RESTRICT q8 = y[i].qs;
         memset(aux32, 0, 8*sizeof(int32_t));
-        int8_t * GGML_RESTRICT a = aux8;
+        int8_t * GGML_RESTRICT a = aux8;                                        // 解包结果存入aux8 int_8[256]
         for (int j = 0; j < QK_K/64; ++j) {
             for (int l = 0; l < 32; ++l) a[l] = (int8_t)(q4[l] & 0xF);
             a += 32;
@@ -560,7 +565,7 @@ void ggml_vec_dot_q4_K_q8_K_generic(int n, float * GGML_RESTRICT s, size_t bs, c
 
         int sumi = 0;
         for (int j = 0; j < QK_K/16; ++j) sumi += y[i].bsums[j] * mins[j/2];
-        a = aux8;
+        a = aux8;                                                               
         int is = 0;
         for (int j = 0; j < QK_K/32; ++j) {
             int32_t scale = scales[is++];
@@ -584,6 +589,9 @@ void ggml_vec_dot_q4_K_q8_K_generic(int n, float * GGML_RESTRICT s, size_t bs, c
     }
     for (int l = 0; l < 8; ++l) sumf += sums[l];
     *s = sumf;
+#ifdef GGML_PERF_ENABLE
+    ggml_profiler_end_sampled("ggml_vec_dot_q4_K_q8_K_generic", call_id++);
+#endif
 }
 
 void ggml_vec_dot_q5_K_q8_K_generic(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy,  size_t by, int nrc) {

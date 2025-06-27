@@ -7,6 +7,7 @@
 #include "ggml-cpu.h"
 #include "ggml-cpu-impl.h"
 #include "traits.h"
+#include <iostream>
 
 #include "arch-fallback.h"
 
@@ -623,6 +624,13 @@ void ggml_gemm_q4_0_8x8_q8_0_generic(int n, float * GGML_RESTRICT s, size_t bs, 
 }
 
 void ggml_gemm_q4_K_8x8_q8_K_generic(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, const void * GGML_RESTRICT vy, int nr, int nc) {
+    static bool print_once = false;
+    if (!print_once)
+    {
+        std::cout << "\n\n\n\n\n\n" << std::endl;
+        std::cout << "Running :ggml_gemm_q4_K_8x8_q8_K_generic" << std::endl;
+        print_once = true;
+    }
     const int qk = QK_K;
     const int nb = n / qk;
     const int ncols_interleaved = 8;
