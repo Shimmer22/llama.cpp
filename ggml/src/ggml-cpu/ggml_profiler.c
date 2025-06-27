@@ -253,25 +253,30 @@ void ggml_profiler_report_sorted(void) {
 }
 
 // Write performance data to CSV file
-void ggml_profiler_report_csv(const char* filename) {
+void ggml_profiler_report_csv(const char* filename, int round) {
     profile_entry_t combined[HASH_SIZE] = {{0}};
     combine_profiler_data(combined);
 
-    FILE* fp = fopen(filename, "w");
+    FILE* fp = fopen(filename, "a"); // Change "w" to "a" for append mode
     if (fp == NULL) {
         fprintf(stderr, "Error: Failed to open file %s for writing.\n", filename);
         return;
     }
 
-    // Write CSV header
-    fprintf(fp, "Function,Calls,Total_ms,Avg_us\n");
+    // Write CSV header only if file is empty
+    fseek(fp, 0, SEEK_END);
+    if (ftell(fp) == 0) {
+        fprintf(fp, "Round,Function,Calls,Total_ms,Avg_us\n");
+    }
+    fseek(fp, 0, SEEK_END); // Ensure writing continues at end
 
-    // Write data
+    // Write data with round number
     for (int i = 0; i < HASH_SIZE; ++i) {
         if (combined[i].name != NULL) {
             double total_ms = combined[i].total_ns / 1e6;
             double avg_us = (combined[i].call_count > 0) ? (combined[i].total_ns / combined[i].call_count / 1e3) : 0.0;
-            fprintf(fp, "\"%s\",%ld,%.3f,%.3f\n",
+            fprintf(fp, "%d,\"%s\",%ld,%.3f,%.3f\n",
+                    round,
                     combined[i].name,
                     combined[i].call_count,
                     total_ms,

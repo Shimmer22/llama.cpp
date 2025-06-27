@@ -159,9 +159,9 @@ void ggml_vec_dot_q4_K_q8_K_arm_acc(int n, float * GGML_RESTRICT s, size_t bs, c
 
     // 前 nb - 1 次循环：带预取
     for (int i = 0; i < nb - 1; ++i) {
-        const uint8_t prefetch_distance = 0;
-        __builtin_prefetch(&x[i + prefetch_distance], 0, 0);
-        __builtin_prefetch(&y[i + prefetch_distance], 0, 0);
+        const uint8_t prefetch_distance = 2;
+        __builtin_prefetch(&x[i + prefetch_distance], 0, 3);
+        __builtin_prefetch(&y[i + prefetch_distance], 0, 3);
         __builtin_prefetch(x[i + prefetch_distance].qs, 0, 0);
         __builtin_prefetch(y[i + prefetch_distance].qs, 0, 0);
         __builtin_prefetch(y[i + prefetch_distance].bsums, 0, 0);

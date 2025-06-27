@@ -271,6 +271,8 @@ struct cmd_params {
     bool                             no_warmup;
     output_formats                   output_format;
     output_formats                   output_format_stderr;
+    bool                             csv; // report存入CSV
+    int                              round;
 };
 
 static const cmd_params cmd_params_defaults = {
@@ -308,6 +310,8 @@ static const cmd_params cmd_params_defaults = {
     /* no_warmup            */ false,
     /* output_format        */ MARKDOWN,
     /* output_format_stderr */ NONE,
+    /* csv                  */ false,
+    /* round                */ 0,
 };
 
 static void print_usage(int /* argc */, char ** argv) {
@@ -329,6 +333,9 @@ static void print_usage(int /* argc */, char ** argv) {
     printf("  -v, --verbose                             verbose output\n");
     printf("  --progress                                print test progress indicators\n");
     printf("  --no-warmup                               skip warmup runs before benchmarking\n");
+    printf("  --csv                                     output profiler report as CSV (default: sorted report)\n");
+    printf("  --round <n>                               specify round number for CSV report (default: %d)\n",
+            cmd_params_defaults.round);
     printf("\n");
     printf("test parameters:\n");
     printf("  -m, --model <filename>                    (default: %s)\n", join(cmd_params_defaults.model, ",").c_str());
@@ -805,6 +812,14 @@ static cmd_params parse_cmd_params(int argc, char ** argv) {
                 params.progress = true;
             } else if (arg == "--no-warmup") {
                 params.no_warmup = true;
+            } else if (arg == "--csv") {
+                params.csv = true;
+            } else if (arg == "--round") {
+                if (++i >= argc) {
+                    invalid_param = true;
+                    break;
+                }
+                params.round = std::stoi(argv[i]);
             } else {
                 invalid_param = true;
                 break;
@@ -2029,8 +2044,10 @@ int main(int argc, char ** argv) {
 
     llama_backend_free();
 #ifdef GGML_PERF_ENABLE
+    if (params.csv) {
+        ggml_profiler_report_csv("prefetch_test.csv", params.round);
+    }
     ggml_profiler_report_sorted();
-    ggml_profiler_report_csv("prefetch_test.csv");
 #endif
     return 0;
 }
