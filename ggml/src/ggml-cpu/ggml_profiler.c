@@ -257,7 +257,7 @@ void ggml_profiler_report_csv(const char* filename, int round) {
     profile_entry_t combined[HASH_SIZE] = {{0}};
     combine_profiler_data(combined);
 
-    FILE* fp = fopen(filename, "a"); // Change "w" to "a" for append mode
+    FILE* fp = fopen(filename, "a"); // Append mode
     if (fp == NULL) {
         fprintf(stderr, "Error: Failed to open file %s for writing.\n", filename);
         return;
@@ -270,6 +270,11 @@ void ggml_profiler_report_csv(const char* filename, int round) {
     }
     fseek(fp, 0, SEEK_END); // Ensure writing continues at end
 
+    // Variables to store total_ms for speedup calculation
+    double total_ms_arm_acc = 0.0;
+    double total_ms_generic = 0.0;
+    double total_ms_standard = 0.0;
+
     // Write data with round number
     for (int i = 0; i < HASH_SIZE; ++i) {
         if (combined[i].name != NULL) {
@@ -281,8 +286,23 @@ void ggml_profiler_report_csv(const char* filename, int round) {
                     combined[i].call_count,
                     total_ms,
                     avg_us);
+
+            // Store total_ms for specific functions
+            if (strcmp(combined[i].name, "ggml_vec_dot_q4_K_q8_K_arm_acc") == 0) {
+                total_ms_arm_acc = total_ms;
+            } else if (strcmp(combined[i].name, "ggml_vec_dot_q4_K_q8_K_generic") == 0) {
+                total_ms_generic = total_ms;
+            } else if (strcmp(combined[i].name, "ggml_vec_dot_q4_K_q8_K") == 0) {
+                total_ms_standard = total_ms;
+            }
         }
     }
+
+    // Calculate and write speedup ratios
+    double speedup_arm_acc_vs_generic = (total_ms_generic > 0 && total_ms_arm_acc > 0) ? total_ms_generic / total_ms_arm_acc : 0.0;
+    double speedup_arm_acc_vs_standard = (total_ms_standard > 0 && total_ms_arm_acc > 0) ? total_ms_standard / total_ms_arm_acc : 0.0;
+    fprintf(fp, "%d,Speedup,arm_acc_vs_generic=%.3f,arm_acc_vs_standard=%.3f\n",
+            round, speedup_arm_acc_vs_generic, speedup_arm_acc_vs_standard);
 
     fclose(fp);
 }

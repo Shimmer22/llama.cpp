@@ -6,6 +6,7 @@
 #include "../../quants.h"
 #include "../../ggml-cpu-impl.h"
 #include "../../ggml_profiler.h"
+#include "../../simd-mappings.h"
 
 #include <math.h>
 #include <string.h>
@@ -69,67 +70,6 @@ void ggml_vec_dot_q4_K_q8_K_compare(int n, float * GGML_RESTRICT s, size_t bs,
     *s = result;
 }
 
-static inline void ggml_compute_block_q4_K_q8_K(const block_q4_K * x, const block_q8_K * y,
-                                                uint32_t * utmp, float * sumf){
-    static const uint32_t kmask1 = 0x3f3f3f3f;
-    static const uint32_t kmask2 = 0x0f0f0f0f;
-    static const uint32_t kmask3 = 0x03030303;
-
-    const uint8x16_t m4b = vdupq_n_u8(0xf);
-    const int32x4_t mzero = vdupq_n_s32(0);
-
-    ggml_int8x16x2_t q4bytes;
-    ggml_int8x16x2_t q8bytes;
-
-    const float d    = y->d * GGML_FP16_TO_FP32(x->d);
-    const float dmin = y->d * GGML_FP16_TO_FP32(x->dmin);
-
-    const int16x8_t q8sums = vpaddq_s16(vld1q_s16(y->bsums), vld1q_s16(y->bsums + 8));
-
-    memcpy(utmp, x->scales, 12);
-
-    uint32x2_t mins8 = { 0 };
-    mins8 = vset_lane_u32(utmp[1] & kmask1, mins8, 0);
-    mins8 = vset_lane_u32(((utmp[2] >> 4) & kmask2) | (((utmp[1] >> 6) & kmask3) << 4), mins8, 1);
-
-    utmp[1] = (utmp[2] & kmask2) | (((utmp[0] >> 6) & kmask3) << 4);
-    utmp[0] &= kmask1;
-
-    const int16x8_t mins = vreinterpretq_s16_u16(vmovl_u8(vreinterpret_u8_u32(mins8)));
-    const int32x4_t prod = vaddq_s32(vmull_s16(vget_low_s16 (q8sums), vget_low_s16 (mins)),
-                                     vmull_s16(vget_high_s16(q8sums), vget_high_s16(mins)));
-    *sumf -= dmin * vaddvq_s32(prod);
-
-    const uint8_t * scales = (const uint8_t *)utmp;
-
-    const uint8_t * GGML_RESTRICT q4 = x->qs;
-    const int8_t  * GGML_RESTRICT q8 = y->qs;
-
-    int32_t sumi1 = 0;
-    int32_t sumi2 = 0;
-
-    for (int j = 0; j < QK_K/64; ++j) {
-        const ggml_uint8x16x2_t q4bits = ggml_vld1q_u8_x2(q4); q4 += 32;
-
-        q8bytes = ggml_vld1q_s8_x2(q8); q8 += 32;
-        q4bytes.val[0] = vreinterpretq_s8_u8(vandq_u8(q4bits.val[0], m4b));
-        q4bytes.val[1] = vreinterpretq_s8_u8(vandq_u8(q4bits.val[1], m4b));
-
-        const int32x4_t p1 = ggml_vdotq_s32(ggml_vdotq_s32(mzero, q4bytes.val[0], q8bytes.val[0]),
-                                            q4bytes.val[1], q8bytes.val[1]);
-        sumi1 += vaddvq_s32(p1) * scales[2*j+0];
-
-        q8bytes = ggml_vld1q_s8_x2(q8); q8 += 32;
-        q4bytes.val[0] = vreinterpretq_s8_u8(vshrq_n_u8(q4bits.val[0], 4));
-        q4bytes.val[1] = vreinterpretq_s8_u8(vshrq_n_u8(q4bits.val[1], 4));
-
-        const int32x4_t p2 = ggml_vdotq_s32(ggml_vdotq_s32(mzero, q4bytes.val[0], q8bytes.val[0]),
-                                            q4bytes.val[1], q8bytes.val[1]);
-        sumi2 += vaddvq_s32(p2) * scales[2*j+1];
-    }
-
-    *sumf += d * (sumi1 + sumi2);
-}
 
 // Optimized function
 void ggml_vec_dot_q4_K_q8_K_arm_acc(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
@@ -147,6 +87,7 @@ void ggml_vec_dot_q4_K_q8_K_arm_acc(int n, float * GGML_RESTRICT s, size_t bs, c
     const block_q8_K * GGML_RESTRICT y = vy;
 
     const int nb = n / QK_K;
+    uint32_t utmp[4];
 
 #if defined __ARM_NEON
 #ifdef GGML_PERF_ENABLE
@@ -154,24 +95,77 @@ void ggml_vec_dot_q4_K_q8_K_arm_acc(int n, float * GGML_RESTRICT s, size_t bs, c
     ggml_profiler_start_sampled("ggml_vec_dot_q4_K_q8_K_arm_acc: NEON", call_id_2);
 #endif
 
-    uint32_t utmp[4];
+
     float sumf = 0.0f;
 
-    // 前 nb - 1 次循环：带预取
-    for (int i = 0; i < nb - 1; ++i) {
-        const uint8_t prefetch_distance = 2;
-        __builtin_prefetch(&x[i + prefetch_distance], 0, 3);
-        __builtin_prefetch(&y[i + prefetch_distance], 0, 3);
-        __builtin_prefetch(x[i + prefetch_distance].qs, 0, 0);
-        __builtin_prefetch(y[i + prefetch_distance].qs, 0, 0);
-        __builtin_prefetch(y[i + prefetch_distance].bsums, 0, 0);
-        __builtin_prefetch(x[i + prefetch_distance].scales, 0, 0);
+    static const uint32_t kmask1 = 0x3f3f3f3f;
+    static const uint32_t kmask2 = 0x0f0f0f0f;
+    static const uint32_t kmask3 = 0x03030303;
 
-        ggml_compute_block_q4_K_q8_K(&x[i], &y[i], utmp, &sumf);
+    const uint8x16_t m4b = vdupq_n_u8(0xf);
+    const int32x4_t mzero = vdupq_n_s32(0);
+
+    ggml_int8x16x2_t q4bytes;
+    ggml_int8x16x2_t q8bytes;
+
+    const uint8_t prefetch_distance = 0; 
+    // 循环带预取
+    for (int i = 0; i < nb; ++i) {
+        // if (i + prefetch_distance < nb) {
+        //     __builtin_prefetch(&x[i + prefetch_distance], 0, 3);
+        //     __builtin_prefetch(&y[i + prefetch_distance], 0, 3);
+        // }
+        // __builtin_prefetch(&x[i + prefetch_distance], 0, 3);
+        // __builtin_prefetch(&y[i + prefetch_distance], 0, 3);
+
+        const float d = y[i].d * GGML_CPU_FP16_TO_FP32(x[i].d);                                         // 已经使用NEON SIMD，导向simd-mappings
+        const float dmin = y[i].d * GGML_CPU_FP16_TO_FP32(x[i].dmin);
+
+        const int16x8_t q8sums = vpaddq_s16(vld1q_s16(y[i].bsums), vld1q_s16(y[i].bsums + 8));
+
+        memcpy(utmp, x[i].scales, 12);
+
+        uint32x2_t mins8 = { 0 };
+        mins8 = vset_lane_u32(utmp[1] & kmask1, mins8, 0);
+        mins8 = vset_lane_u32(((utmp[2] >> 4) & kmask2) | (((utmp[1] >> 6) & kmask3) << 4), mins8, 1);
+
+        utmp[1] = (utmp[2] & kmask2) | (((utmp[0] >> 6) & kmask3) << 4);
+        utmp[0] &= kmask1;
+
+        const int16x8_t mins = vreinterpretq_s16_u16(vmovl_u8(vreinterpret_u8_u32(mins8)));
+        const int32x4_t prod = vaddq_s32(vmull_s16(vget_low_s16 (q8sums), vget_low_s16 (mins)),
+                                         vmull_s16(vget_high_s16(q8sums), vget_high_s16(mins)));
+        sumf -= dmin * vaddvq_s32(prod);
+
+        const uint8_t * scales = (const uint8_t *)utmp;
+
+        const uint8_t * GGML_RESTRICT q4 = x[i].qs;
+        const int8_t  * GGML_RESTRICT q8 = y[i].qs;
+
+        int32_t sumi1 = 0;
+        int32_t sumi2 = 0;
+
+        for (int j = 0; j < QK_K/64; ++j) {
+            const ggml_uint8x16x2_t q4bits = ggml_vld1q_u8_x2(q4); q4 += 32;
+
+            q8bytes = ggml_vld1q_s8_x2(q8); q8 += 32;
+            q4bytes.val[0] = vreinterpretq_s8_u8(vandq_u8  (q4bits.val[0], m4b));
+            q4bytes.val[1] = vreinterpretq_s8_u8(vandq_u8  (q4bits.val[1], m4b));
+
+            const int32x4_t p1 = ggml_vdotq_s32(ggml_vdotq_s32(mzero, q4bytes.val[0], q8bytes.val[0]), q4bytes.val[1], q8bytes.val[1]);
+            sumi1 += vaddvq_s32(p1) * scales[2*j+0];
+
+            q8bytes = ggml_vld1q_s8_x2(q8); q8 += 32;
+            q4bytes.val[0] = vreinterpretq_s8_u8(vshrq_n_u8(q4bits.val[0], 4));
+            q4bytes.val[1] = vreinterpretq_s8_u8(vshrq_n_u8(q4bits.val[1], 4));
+
+            const int32x4_t p2 = ggml_vdotq_s32(ggml_vdotq_s32(mzero, q4bytes.val[0], q8bytes.val[0]), q4bytes.val[1], q8bytes.val[1]);
+
+            sumi2 += vaddvq_s32(p2) * scales[2*j+1];
+        }
+
+        sumf += d * (sumi1 + sumi2);
     }
-
-    // 最后一个块：不预取
-    ggml_compute_block_q4_K_q8_K(&x[nb - 1], &y[nb - 1], utmp, &sumf);
 
     *s = sumf;
 
