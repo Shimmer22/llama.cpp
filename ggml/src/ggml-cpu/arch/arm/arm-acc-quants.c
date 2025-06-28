@@ -39,34 +39,28 @@ static const uint64_t table_b2b_0[1 << 8] = { B8(00, 10) }; // ( b) << 4
 static const uint64_t table_b2b_1[1 << 8] = { B8(10, 00) }; // (!b) << 4
 #endif
 
+static __thread uint32_t rng_state = 0x12345678;
+
+static inline uint32_t xorshift32() {
+    uint32_t x = rng_state;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    rng_state = x;
+    return x;
+}
+
 // Comparison function to evaluate three implementations
 void ggml_vec_dot_q4_K_q8_K_compare(int n, float * GGML_RESTRICT s, size_t bs,
                                     const void * GGML_RESTRICT vx, size_t bx,
                                     const void * GGML_RESTRICT vy, size_t by,
                                     int nrc) {
-    // static __thread 用于每个线程维护自己的轮转状态
-    static __thread int method_index = 0;
-
     float result = 0.0f;
-
-    switch (method_index) {
-        case 0:
-            ggml_vec_dot_q4_K_q8_K_generic(n, &result, bs, vx, bx, vy, by, nrc);
-            break;
-        case 1:
-            ggml_vec_dot_q4_K_q8_K_arm_acc(n, &result, bs, vx, bx, vy, by, nrc);
-            break;
-        case 2:
-            ggml_vec_dot_q4_K_q8_K(n, &result, bs, vx, bx, vy, by, nrc);
-            break;
-        default:
-            assert(0 && "Invalid method_index");
+    switch (xorshift32() % 3) {
+        case 0: ggml_vec_dot_q4_K_q8_K_arm_acc(n, &result, bs, vx, bx, vy, by, nrc); break;
+        case 1: ggml_vec_dot_q4_K_q8_K(n, &result, bs, vx, bx, vy, by, nrc); break;
+        case 2: ggml_vec_dot_q4_K_q8_K_generic(n, &result, bs, vx, bx, vy, by, nrc); break;
     }
-
-    // 下次轮换
-    // method_index = (method_index + 1) % 3;
-    method_index = rand() % 3;
-
     *s = result;
 }
 
@@ -108,15 +102,13 @@ void ggml_vec_dot_q4_K_q8_K_arm_acc(int n, float * GGML_RESTRICT s, size_t bs, c
     ggml_int8x16x2_t q4bytes;
     ggml_int8x16x2_t q8bytes;
 
-    const uint8_t prefetch_distance = 0; 
+    const uint8_t prefetch_distance = 4; 
     // 循环带预取
     for (int i = 0; i < nb; ++i) {
-        // if (i + prefetch_distance < nb) {
-        //     __builtin_prefetch(&x[i + prefetch_distance], 0, 3);
-        //     __builtin_prefetch(&y[i + prefetch_distance], 0, 3);
-        // }
-        // __builtin_prefetch(&x[i + prefetch_distance], 0, 3);
-        // __builtin_prefetch(&y[i + prefetch_distance], 0, 3);
+        if (i + prefetch_distance < nb) {
+            __builtin_prefetch(&x[i + prefetch_distance], 0, 3);
+            __builtin_prefetch(&y[i + prefetch_distance], 0, 3);
+        }
 
         const float d = y[i].d * GGML_CPU_FP16_TO_FP32(x[i].d);                                         // 已经使用NEON SIMD，导向simd-mappings
         const float dmin = y[i].d * GGML_CPU_FP16_TO_FP32(x[i].dmin);
