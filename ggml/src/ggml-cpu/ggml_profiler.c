@@ -109,6 +109,7 @@ void ggml_profiler_end(const char* name) {
             thread_profiler_ptr->used++;
             break;
         } else if (strcmp(thread_profiler_ptr->items[idx].name, name) == 0) {
+        // } else {
             thread_profiler_ptr->items[idx].call_count++;
             thread_profiler_ptr->items[idx].total_ns += dt;
             break;
@@ -151,6 +152,7 @@ void ggml_profiler_end_sampled(const char* name, int64_t call_id) {
             thread_profiler_ptr->used++;
             break;
         } else if (strcmp(thread_profiler_ptr->items[idx].name, name) == 0) {
+        // } else {
             // Corrected: Scale by sampling_rate
             thread_profiler_ptr->items[idx].call_count += sampling_rate;
             thread_profiler_ptr->items[idx].total_ns += dt * sampling_rate;
@@ -270,11 +272,6 @@ void ggml_profiler_report_csv(const char* filename, int round) {
     }
     fseek(fp, 0, SEEK_END); // Ensure writing continues at end
 
-    // Variables to store total_ms for speedup calculation
-    double total_ms_arm_acc = 0.0;
-    double total_ms_generic = 0.0;
-    double total_ms_standard = 0.0;
-
     // Write data with round number
     for (int i = 0; i < HASH_SIZE; ++i) {
         if (combined[i].name != NULL) {
@@ -287,22 +284,8 @@ void ggml_profiler_report_csv(const char* filename, int round) {
                     total_ms,
                     avg_us);
 
-            // Store total_ms for specific functions
-            if (strcmp(combined[i].name, "ggml_vec_dot_q4_K_q8_K_arm_acc") == 0) {
-                total_ms_arm_acc = total_ms;
-            } else if (strcmp(combined[i].name, "ggml_vec_dot_q4_K_q8_K_generic") == 0) {
-                total_ms_generic = total_ms;
-            } else if (strcmp(combined[i].name, "ggml_vec_dot_q4_K_q8_K") == 0) {
-                total_ms_standard = total_ms;
-            }
         }
     }
-
-    // Calculate and write speedup ratios
-    double speedup_arm_acc_vs_generic = (total_ms_generic > 0 && total_ms_arm_acc > 0) ? total_ms_generic / total_ms_arm_acc : 0.0;
-    double speedup_arm_acc_vs_standard = (total_ms_standard > 0 && total_ms_arm_acc > 0) ? total_ms_standard / total_ms_arm_acc : 0.0;
-    fprintf(fp, "%d,Speedup,arm_acc_vs_generic=%.3f,arm_acc_vs_standard=%.3f\n",
-            round, speedup_arm_acc_vs_generic, speedup_arm_acc_vs_standard);
 
     fclose(fp);
 }

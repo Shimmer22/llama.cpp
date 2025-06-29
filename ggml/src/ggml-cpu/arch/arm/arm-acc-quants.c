@@ -7,6 +7,7 @@
 #include "../../ggml-cpu-impl.h"
 #include "../../ggml_profiler.h"
 #include "../../simd-mappings.h"
+#include "xorshift_rng.h"
 
 #include <math.h>
 #include <string.h>
@@ -34,21 +35,7 @@
 #define B7(c,s,n) B6(c,s,n ## c), B6(c,s,n ## s)
 #define B8(c,s  ) B7(c,s,      c), B7(c,s,      s)
 
-// precomputed tables for expanding 8bits to 8 bytes:
-static const uint64_t table_b2b_0[1 << 8] = { B8(00, 10) }; // ( b) << 4
-static const uint64_t table_b2b_1[1 << 8] = { B8(10, 00) }; // (!b) << 4
 #endif
-
-static __thread uint32_t rng_state = 0x12345678;
-
-static inline uint32_t xorshift32() {
-    uint32_t x = rng_state;
-    x ^= x << 13;
-    x ^= x >> 17;
-    x ^= x << 5;
-    rng_state = x;
-    return x;
-}
 
 // Comparison function to evaluate three implementations
 void ggml_vec_dot_q4_K_q8_K_compare(int n, float * GGML_RESTRICT s, size_t bs,
@@ -56,7 +43,7 @@ void ggml_vec_dot_q4_K_q8_K_compare(int n, float * GGML_RESTRICT s, size_t bs,
                                     const void * GGML_RESTRICT vy, size_t by,
                                     int nrc) {
     float result = 0.0f;
-    switch (xorshift32() % 3) {
+    switch (XORSHIFT32_RANGE(3)) {
         case 0: ggml_vec_dot_q4_K_q8_K_arm_acc(n, &result, bs, vx, bx, vy, by, nrc); break;
         case 1: ggml_vec_dot_q4_K_q8_K(n, &result, bs, vx, bx, vy, by, nrc); break;
         case 2: ggml_vec_dot_q4_K_q8_K_generic(n, &result, bs, vx, bx, vy, by, nrc); break;
@@ -102,7 +89,7 @@ void ggml_vec_dot_q4_K_q8_K_arm_acc(int n, float * GGML_RESTRICT s, size_t bs, c
     ggml_int8x16x2_t q4bytes;
     ggml_int8x16x2_t q8bytes;
 
-    const uint8_t prefetch_distance = 4; 
+    const uint8_t prefetch_distance = 8; 
     // 循环带预取
     for (int i = 0; i < nb; ++i) {
         if (i + prefetch_distance < nb) {

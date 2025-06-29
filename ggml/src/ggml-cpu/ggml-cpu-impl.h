@@ -308,7 +308,7 @@ inline static uint8x16_t ggml_vqtbl1q_u8(uint8x16_t a, uint8x16_t b) {
 #endif // !defined(__aarch64__)
 
 #if !defined(__ARM_FEATURE_DOTPROD)
-
+// 在编译的时候，部分通用实现会使用下面的内联方法，但是通过objdump libggml-cpu.so我已经验证其受到了dotprod的加速
 inline static int32x4_t ggml_vdotq_s32(int32x4_t acc, int8x16_t a, int8x16_t b) {
     const int16x8_t p0 = vmull_s8(vget_low_s8 (a), vget_low_s8 (b));
     const int16x8_t p1 = vmull_s8(vget_high_s8(a), vget_high_s8(b));
@@ -318,6 +318,7 @@ inline static int32x4_t ggml_vdotq_s32(int32x4_t acc, int8x16_t a, int8x16_t b) 
 
 #else
 
+// 此处已经被定义为硬件级的vdotq
 #define ggml_vdotq_s32(a, b, c) vdotq_s32(a, b, c)
 
 #endif // !defined(__ARM_FEATURE_DOTPROD)
