@@ -7,6 +7,7 @@ threads=6
 # 参数解析
 while [[ "$1" =~ ^- ]]; do
     case "$1" in
+        -0) quant="Q4_0" ;;
         -3) quant="Q3_K_M" ;;
         -4) quant="Q4_K_M" ;;
         -5) quant="Q5_K_M" ;;

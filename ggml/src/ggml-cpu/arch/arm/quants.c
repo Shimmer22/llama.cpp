@@ -139,6 +139,7 @@ void quantize_row_q8_K(const float * GGML_RESTRICT x, void * GGML_RESTRICT y, in
 //===================================== Dot products =================================
 
 void ggml_vec_dot_q4_0_q8_0(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
+    printf("ggml_vec_dot_q4_0_q8_0");
     const int qk = QK8_0;
     const int nb = n / qk;
 
@@ -432,6 +433,7 @@ void ggml_vec_dot_q4_0_q8_0(int n, float * GGML_RESTRICT s, size_t bs, const voi
 }
 
 void ggml_vec_dot_q4_1_q8_1(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
+    printf("ggml_vec_dot_q4_1_q8_1");
     const int qk = QK8_1;
     const int nb = n / qk;
 
@@ -2145,7 +2147,7 @@ void ggml_vec_dot_q3_K_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const voi
 void ggml_vec_dot_q4_K_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
 #ifdef GGML_PERF_ENABLE
     static __thread int64_t call_id = 0;
-    ggml_profiler_start_sampled("ggml_vec_dot_q4_K_q8_K", call_id);
+    ggml_profiler_start_sampled("vec_dot_q4_K_q8_K", call_id);
 #endif
     assert(n % QK_K == 0);
 #ifdef __ARM_FEATURE_MATMUL_INT8
@@ -2174,7 +2176,7 @@ void ggml_vec_dot_q4_K_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const voi
     if (nrc == 2) {
 #ifdef GGML_PERF_ENABLE
         static __thread int64_t call_id_1 = 0;
-        ggml_profiler_start_sampled("ggml_vec_dot_q4_K_q8_K: IMM8", call_id_1);
+        ggml_profiler_start_sampled("vec_dot_q4_K_q8_K: IMM8", call_id_1);
 #endif
         const block_q4_K * GGML_RESTRICT x0 = x;
         const block_q4_K * GGML_RESTRICT x1 = (const block_q4_K *) ((const uint8_t *)vx + bx);
@@ -2311,8 +2313,8 @@ void ggml_vec_dot_q4_K_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const voi
         vst1_f32(s + bs, vget_high_f32(vfsum));
 
 #ifdef GGML_PERF_ENABLE
-        ggml_profiler_end_sampled("ggml_vec_dot_q4_K_q8_K: IMM8", call_id_1++);
-        ggml_profiler_end_sampled("ggml_vec_dot_q4_K_q8_K", call_id++);
+        ggml_profiler_end_sampled("vec_dot_q4_K_q8_K: IMM8", call_id_1++);
+        ggml_profiler_end_sampled("vec_dot_q4_K_q8_K", call_id++);
 #endif
         return;
     }
@@ -2407,7 +2409,7 @@ void ggml_vec_dot_q4_K_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const voi
     // }
 #ifdef GGML_PERF_ENABLE
     static __thread int64_t call_id_2 = 0;
-    ggml_profiler_start_sampled("ggml_vec_dot_q4_K_q8_K: NEON", call_id_2);
+    ggml_profiler_start_sampled("vec_dot_q4_K_q8_K: NEON", call_id_2);
 #endif
     const uint8x16_t m4b = vdupq_n_u8(0xf);
     const int32x4_t mzero = vdupq_n_s32(0);
@@ -2471,12 +2473,12 @@ void ggml_vec_dot_q4_K_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const voi
 
     *s = sumf;
 #ifdef GGML_PERF_ENABLE
-    ggml_profiler_end_sampled("ggml_vec_dot_q4_K_q8_K: NEON", call_id_2++);
+    ggml_profiler_end_sampled("vec_dot_q4_K_q8_K: NEON", call_id_2++);
 #endif
 #else
 #ifdef GGML_PERF_ENABLE
     static __thread int64_t call_id_3 = 0;
-    ggml_profiler_start_sampled("ggml_vec_dot_q4_K_q8_K: GENERAL", call_id_3);
+    ggml_profiler_start_sampled("vec_dot_q4_K_q8_K: GENERAL", call_id_3);
 #endif
     const uint8_t * scales = (const uint8_t*)&utmp[0];
     const uint8_t * mins   = (const uint8_t*)&utmp[2];
@@ -2533,11 +2535,11 @@ void ggml_vec_dot_q4_K_q8_K(int n, float * GGML_RESTRICT s, size_t bs, const voi
     for (int l = 0; l < 8; ++l) sumf += sums[l];
     *s = sumf;
 #ifdef GGML_PERF_ENABLE
-    ggml_profiler_end_sampled("ggml_vec_dot_q4_K_q8_K: GENERAL", call_id_3++);
+    ggml_profiler_end_sampled("vec_dot_q4_K_q8_K: GENERAL", call_id_3++);
 #endif
 #endif
 #ifdef GGML_PERF_ENABLE
-    ggml_profiler_end_sampled("ggml_vec_dot_q4_K_q8_K", call_id++);
+    ggml_profiler_end_sampled("vec_dot_q4_K_q8_K", call_id++);
 #endif
 }
 

@@ -1,4 +1,5 @@
 #include "vec.h"
+#include "ggml_profiler.h"
 
 #include <cassert>
 
@@ -189,6 +190,10 @@ void ggml_vec_dot_bf16(int n, float * GGML_RESTRICT s, size_t bs, ggml_bf16_t * 
 }
 
 void ggml_vec_dot_f16(int n, float * GGML_RESTRICT s, size_t bs, ggml_fp16_t * GGML_RESTRICT x, size_t bx, ggml_fp16_t * GGML_RESTRICT y, size_t by, int nrc) {
+#ifdef GGML_PERF_ENABLE
+    // static __thread int64_t call_id = 0;
+    // ggml_profiler_start_sampled("ggml_vec_dot_f16", call_id);
+#endif
     assert(nrc == 1);
     GGML_UNUSED(nrc);
     GGML_UNUSED(bx);
@@ -198,6 +203,7 @@ void ggml_vec_dot_f16(int n, float * GGML_RESTRICT s, size_t bs, ggml_fp16_t * G
     ggml_float sumf = 0.0;
 
 #if defined(GGML_SIMD)
+    // opened
     const int np = (n & ~(GGML_F16_STEP - 1));
 
     GGML_F16_VEC sum[GGML_F16_ARR] = { GGML_F16_VEC_ZERO };
@@ -228,6 +234,9 @@ void ggml_vec_dot_f16(int n, float * GGML_RESTRICT s, size_t bs, ggml_fp16_t * G
 #endif
 
     *s = sumf;
+#ifdef GGML_PERF_ENABLE
+    // ggml_profiler_end_sampled("ggml_vec_dot_f16", call_id++);
+#endif
 }
 
 void ggml_vec_silu_f32(const int n, float * y, const float * x) {

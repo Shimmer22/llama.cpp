@@ -30,7 +30,7 @@ static __thread uint64_t t0; // 用于计时的线程局部起始时间
 
 static thread_profiler_t* all_thread_profilers[MAX_THREADS];
 static pthread_mutex_t all_thread_mutex = PTHREAD_MUTEX_INITIALIZER;
-static int sampling_rate = 200;
+static int sampling_rate = 50;
 static int num_registered_threads = 0; // Keep track of registered threads
 
 // String hashing function (unchanged)

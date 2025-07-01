@@ -110,6 +110,11 @@ void quantize_row_q8_K_generic(const float * GGML_RESTRICT x, void * GGML_RESTRI
 //===================================== Dot products =================================
 
 void ggml_vec_dot_q4_0_q8_0_generic(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
+    printf("ggml_vec_dot_q4_0_q8_0_generic");
+#ifdef GGML_PERF_ENABLE
+    static __thread int64_t call_id = 0;
+    ggml_profiler_start_sampled("vec_dot_generic", call_id);
+#endif
     const int qk = QK8_0;
     const int nb = n / qk;
 
@@ -143,6 +148,9 @@ void ggml_vec_dot_q4_0_q8_0_generic(int n, float * GGML_RESTRICT s, size_t bs, c
     }
 
     *s = sumf;
+#ifdef GGML_PERF_ENABLE
+    ggml_profiler_end_sampled("vec_dot_generic", call_id++);
+#endif
 }
 
 // TODO: add WASM SIMD
@@ -514,10 +522,6 @@ void ggml_vec_dot_q3_K_q8_K_generic(int n, float * GGML_RESTRICT s, size_t bs, c
 }
 
 void ggml_vec_dot_q4_K_q8_K_generic(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy, size_t by, int nrc) {
-#ifdef GGML_PERF_ENABLE
-    static __thread int64_t call_id = 0;
-    ggml_profiler_start_sampled("ggml_vec_dot_q4_K_q8_K_generic", call_id);
-#endif
     assert(n % QK_K == 0);                      // 向量的长度是分块QK_K的整数倍
     assert(nrc == 1);                           // 向量并行(IMM8)
     UNUSED(nrc);
@@ -590,9 +594,6 @@ void ggml_vec_dot_q4_K_q8_K_generic(int n, float * GGML_RESTRICT s, size_t bs, c
     }
     for (int l = 0; l < 8; ++l) sumf += sums[l];
     *s = sumf;
-#ifdef GGML_PERF_ENABLE
-    ggml_profiler_end_sampled("ggml_vec_dot_q4_K_q8_K_generic", call_id++);
-#endif
 }
 
 void ggml_vec_dot_q5_K_q8_K_generic(int n, float * GGML_RESTRICT s, size_t bs, const void * GGML_RESTRICT vx, size_t bx, const void * GGML_RESTRICT vy,  size_t by, int nrc) {

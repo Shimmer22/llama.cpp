@@ -1345,6 +1345,25 @@ static void ggml_compute_forward_mul_mat(
     const struct ggml_tensor * src0 = dst->src[0];
     const struct ggml_tensor * src1 = dst->src[1];
 
+    // 线程安全的唯一类型记录
+    static int seen_types[GGML_TYPE_COUNT] = {0};
+    static int first_call = 1;
+    static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+
+    pthread_mutex_lock(&mutex); // 加锁
+    if (first_call) {
+        for (int i = 0; i < GGML_TYPE_COUNT; i++) {
+            seen_types[i] = 0; // 初始化
+        }
+        first_call = 0;
+    }
+
+    if (!seen_types[src0->type]) {
+        printf("Unique src0->type: %d\n", src0->type);
+        seen_types[src0->type] = 1;
+    }
+    pthread_mutex_unlock(&mutex); // 解锁
+
     GGML_TENSOR_BINARY_OP_LOCALS
 
     const int ith = params->ith;
@@ -1806,6 +1825,7 @@ static void ggml_compute_forward(struct ggml_compute_params * params, struct ggm
 
     // extra_buffer op?
     if (ggml_cpu_extra_compute_forward(params, tensor)) {
+        // 使用Q4_0的时候，进入了extra_buffer op
         return;
     }
 

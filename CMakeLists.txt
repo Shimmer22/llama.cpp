@@ -68,6 +68,7 @@ option(LLAMA_ALL_WARNINGS_3RD_PARTY "llama: enable all compiler warnings in 3rd 
 option(GGML_ENABLE_PROFILER "Enable ggml internal profiler" ON)
 if (GGML_ENABLE_PROFILER)
     add_definitions(-DGGML_PERF_ENABLE)
+    message(STATUS "Enabled: GEMM core profiler, decode will bed slower")
 endif()
 
 # compare custom GEMM acc with original
