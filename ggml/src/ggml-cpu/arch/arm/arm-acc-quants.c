@@ -91,7 +91,7 @@ void ggml_vec_dot_q4_K_q8_K_arm_acc(int n, float * GGML_RESTRICT s, size_t bs, c
     const uint8_t prefetch_distance = 8;
     
     for (int i = 0; i < nb; ++i) {
-        // 改进的预取策略 - 预取多个关键数据结构
+        //  预取多个关键数据结构
         if (i + prefetch_distance < nb) {
             __builtin_prefetch(&x[i + prefetch_distance].qs, 0, 3);      // 量化数据
             __builtin_prefetch(&x[i + prefetch_distance].scales, 0, 3);  // 缩放因子
@@ -133,9 +133,7 @@ void ggml_vec_dot_q4_K_q8_K_arm_acc(int n, float * GGML_RESTRICT s, size_t bs, c
         // 多个独立的累加器，减少数据依赖
         int32x4_t acc1 = mzero, acc2 = mzero, acc3 = mzero, acc4 = mzero;
         
-        // 完全展开的循环，每个迭代块优化指令混合
-        
-        // ===== 迭代 0 和 1 的指令交错 =====
+        // 完全展开
         {
             // 预加载迭代0的数据
             const ggml_uint8x16x2_t q4bits_0 = ggml_vld1q_u8_x2(q4_base);
@@ -179,7 +177,6 @@ void ggml_vec_dot_q4_K_q8_K_arm_acc(int n, float * GGML_RESTRICT s, size_t bs, c
             acc2 = vmlaq_n_s32(acc2, p2_1, scale3);
         }
         
-        // ===== 迭代 2 和 3 的指令交错 =====
         {
             // 预加载迭代2和3的数据
             const ggml_uint8x16x2_t q4bits_2 = ggml_vld1q_u8_x2(q4_base + 64);

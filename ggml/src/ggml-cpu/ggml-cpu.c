@@ -1114,7 +1114,8 @@ void ggml_set_f32_nd(const struct ggml_tensor * tensor, int i0, int i1, int i2, 
 ////////////////////////////////////////////////////////////////////////////////
 
 // ggml_compute_forward_mul_mat
-
+// 在ggml_compute_forward_mul_mat已经提前计算一个分块具体的起始与结束索引（不含）
+// 每个线程在本分块计算函数中继续运算
 static void ggml_compute_forward_mul_mat_one_chunk_standard(
     const struct ggml_compute_params * params,
     struct ggml_tensor * dst,
@@ -1139,13 +1140,13 @@ static void ggml_compute_forward_mul_mat_one_chunk_standard(
     ggml_vec_dot_t const vec_dot      = type_traits_cpu[type].vec_dot;
     enum ggml_type const vec_dot_type = type_traits_cpu[type].vec_dot_type;
 
-    // broadcast factors
+    // 计算广播因子
     const int64_t r2 = ne12 / ne02;
     const int64_t r3 = ne13 / ne03;
 
     //printf("ir0_start = %6lld, ir0_end = %6lld, ir1_start = %6lld, ir1_end = %6lld\n", ir0_start, ir0_end, ir1_start, ir1_end);
 
-    // threads with no work simply yield (not sure if it helps)
+    // 计算块的大小不正确直接返回
     if (ir0_start >= ir0_end || ir1_start >= ir1_end) {
         return;
     }
@@ -1156,16 +1157,20 @@ static void ggml_compute_forward_mul_mat_one_chunk_standard(
     assert(ne12 % ne02 == 0);
     assert(ne13 % ne03 == 0);
 
-    // block-tiling attempt
+    // 循环分块的块大小
     const int64_t blck_0 = 16;
     const int64_t blck_1 = 16;
 
+    // 列步长
     const size_t src1_col_stride = src1_cont || src1->type != vec_dot_type ? row_size : nb11;
 
     // attempt to reduce false-sharing (does not seem to make a difference)
     // 16 * 2, accounting for mmla kernels
+    // 暂存一个计算块的结果
+    // 由于块大小为blck_0，如果一次点乘两行，则需要2*16
     float tmp[32];
 
+    // 再次划分两层循环，其中步长为分块的大小
     for (int64_t iir1 = ir1_start; iir1 < ir1_end; iir1 += blck_1) {
         for (int64_t iir0 = ir0_start; iir0 < ir0_end; iir0 += blck_0) {
             for (int64_t ir1 = iir1; ir1 < iir1 + blck_1 && ir1 < ir1_end; ir1 += num_rows_per_vec_dot) {
@@ -1187,6 +1192,7 @@ static void ggml_compute_forward_mul_mat_one_chunk_standard(
                 //       if it is, then we have either copied the data to params->wdata and made it contiguous or we are using
                 //       the original src1 data pointer, so we should index using the indices directly
                 // TODO: this is a bit of a hack, we should probably have a better way to handle this
+                // 获取 src1 中当前列的起始地址
                 const char * src1_col = (const char*)wdata +
                     (src1_cont || src1->type != vec_dot_type
                         ? (i11 + i12 * ne11 + i13 * ne12 * ne11) * row_size
@@ -1197,10 +1203,14 @@ static void ggml_compute_forward_mul_mat_one_chunk_standard(
                 //    vec_dot(ne00, &dst_col[ir0], src0_row + ir0*nb01, src1_col);
                 //}
 
+                // 遍历当前块中的每一行，与某一列（或者两列）做向量点乘
+                // 相当于一个GEMV
+                // 结果放入tmp中
                 for (int64_t ir0 = iir0; ir0 < iir0 + blck_0 && ir0 < ir0_end; ir0 += num_rows_per_vec_dot) {
                     vec_dot(ne00, &tmp[ir0 - iir0], (num_rows_per_vec_dot > 1 ? 16 : 0), src0_row + ir0 * nb01, (num_rows_per_vec_dot > 1 ? nb01 : 0), src1_col, (num_rows_per_vec_dot > 1 ? src1_col_stride : 0), num_rows_per_vec_dot);
                 }
 
+                // 将tmp的结果复制回dst的位置
                 for (int cn = 0; cn < num_rows_per_vec_dot; ++cn) {
                     memcpy(&dst_col[iir0 + cn * nb1 / nb0], tmp + (cn * 16), (MIN(iir0 + blck_0, ir0_end) - iir0) * sizeof(float));
                 }
@@ -1212,8 +1222,9 @@ static void ggml_compute_forward_mul_mat_one_chunk_standard(
 #endif
 }
 
+// 每个线程在本分块计算函数中继续运算
 static void ggml_compute_forward_mul_mat_one_chunk_arm_acc(
-    const struct ggml_compute_params * params,
+const struct ggml_compute_params * params,
     struct ggml_tensor * dst,
     const enum ggml_type type,
     const int64_t num_rows_per_vec_dot,
@@ -1226,23 +1237,19 @@ static void ggml_compute_forward_mul_mat_one_chunk_arm_acc(
     static int64_t call_id = 0;
     ggml_profiler_start_sampled("mul_mat_one_chunk_arm_acc", call_id);
 #endif
+
     const struct ggml_tensor * src0 = dst->src[0];
     const struct ggml_tensor * src1 = dst->src[1];
 
     GGML_TENSOR_BINARY_OP_LOCALS
 
     const bool src1_cont = ggml_is_contiguous(src1);
-
-    ggml_vec_dot_t const vec_dot      = type_traits_cpu[type].vec_dot;
+    ggml_vec_dot_t const vec_dot = type_traits_cpu[type].vec_dot;
     enum ggml_type const vec_dot_type = type_traits_cpu[type].vec_dot_type;
 
-    // broadcast factors
     const int64_t r2 = ne12 / ne02;
     const int64_t r3 = ne13 / ne03;
 
-    //printf("ir0_start = %6lld, ir0_end = %6lld, ir1_start = %6lld, ir1_end = %6lld\n", ir0_start, ir0_end, ir1_start, ir1_end);
-
-    // threads with no work simply yield (not sure if it helps)
     if (ir0_start >= ir0_end || ir1_start >= ir1_end) {
         return;
     }
@@ -1250,62 +1257,92 @@ static void ggml_compute_forward_mul_mat_one_chunk_arm_acc(
     const void * wdata = (src1->type == vec_dot_type) ? src1->data : params->wdata;
     const size_t row_size = ggml_row_size(vec_dot_type, ne10);
 
-    assert(ne12 % ne02 == 0);
-    assert(ne13 % ne03 == 0);
-
-    // block-tiling attempt
-    const int64_t blck_0 = 32; // 更改到32
-    const int64_t blck_1 = 32;
-
+    int64_t blck_0 = 32;
+    int64_t blck_1 = 32;
+    
     const size_t src1_col_stride = src1_cont || src1->type != vec_dot_type ? row_size : nb11;
+    
+    float tmp[64]; // 对应blck增大
 
-    // attempt to reduce false-sharing (does not seem to make a difference)
-    // 16 * 2, accounting for mmla kernels
-    float tmp[64];
+    // 分支
+    if (num_rows_per_vec_dot == 1) {
+        // === 单行处理路径 ===
+        for (int64_t iir1 = ir1_start; iir1 < ir1_end; iir1 += blck_1) {
+            const int64_t ir1_end_block = MIN(iir1 + blck_1, ir1_end);
+            
+            for (int64_t iir0 = ir0_start; iir0 < ir0_end; iir0 += blck_0) {
+                const int64_t ir0_end_block = MIN(iir0 + blck_0, ir0_end);
 
-    for (int64_t iir1 = ir1_start; iir1 < ir1_end; iir1 += blck_1) {
-        for (int64_t iir0 = ir0_start; iir0 < ir0_end; iir0 += blck_0) {
-            for (int64_t ir1 = iir1; ir1 < iir1 + blck_1 && ir1 < ir1_end; ir1 += num_rows_per_vec_dot) {
-                const int64_t i13 = (ir1 / (ne12 * ne1));
-                const int64_t i12 = (ir1 - i13 * ne12 * ne1) / ne1;
-                const int64_t i11 = (ir1 - i13 * ne12 * ne1 - i12 * ne1);
+                for (int64_t ir1 = iir1; ir1 < ir1_end_block; ++ir1) {
+                    const int64_t i13 = ir1 / (ne12 * ne1);
+                    const int64_t i12 = (ir1 - i13 * ne12 * ne1) / ne1;
+                    const int64_t i11 = ir1 - i13 * ne12 * ne1 - i12 * ne1;
 
-                // broadcast src0 into src1
-                const int64_t i03 = i13 / r3;
-                const int64_t i02 = i12 / r2;
+                    const int64_t i03 = i13 / r3;
+                    const int64_t i02 = i12 / r2;
 
-                const int64_t i1 = i11;
-                const int64_t i2 = i12;
-                const int64_t i3 = i13;
+                    const char * src0_row = (const char*)src0->data + (i02 * nb02 + i03 * nb03);
+                    const char * src1_col = (const char*)wdata + 
+                        (src1_cont || src1->type != vec_dot_type ? 
+                         (i11 + i12 * ne11 + i13 * ne12 * ne11) * row_size : 
+                         (i11 * nb11 + i12 * nb12 + i13 * nb13));
+                    
+                    float * dst_col = (float*)((char*)dst->data + (i11 * nb1 + i12 * nb2 + i13 * nb3));
 
-                const char * src0_row = (const char*)src0->data + (0 + i02 * nb02 + i03 * nb03);
-
-                // desc: when src1 is not a contiguous memory block we have to calculate the offset using the strides
-                //       if it is, then we have either copied the data to params->wdata and made it contiguous or we are using
-                //       the original src1 data pointer, so we should index using the indices directly
-                // TODO: this is a bit of a hack, we should probably have a better way to handle this
-                const char * src1_col = (const char*)wdata +
-                    (src1_cont || src1->type != vec_dot_type
-                        ? (i11 + i12 * ne11 + i13 * ne12 * ne11) * row_size
-                        : (i11 * nb11 + i12 * nb12 + i13 * nb13));
-                float * dst_col = (float*)((char*)dst->data + (i1 * nb1 + i2 * nb2 + i3 * nb3));
-
-                //for (int64_t ir0 = iir0; ir0 < iir0 + blck_0 && ir0 < ir0_end; ++ir0) {
-                //    vec_dot(ne00, &dst_col[ir0], src0_row + ir0*nb01, src1_col);
-                //}
-
-                for (int64_t ir0 = iir0; ir0 < iir0 + blck_0 && ir0 < ir0_end; ir0 += num_rows_per_vec_dot) {
-                    vec_dot(ne00, &tmp[ir0 - iir0], (num_rows_per_vec_dot > 1 ? 16 : 0), src0_row + ir0 * nb01, (num_rows_per_vec_dot > 1 ? nb01 : 0), src1_col, (num_rows_per_vec_dot > 1 ? src1_col_stride : 0), num_rows_per_vec_dot);
+                    // 向量化计算
+                    for (int64_t ir0 = iir0; ir0 < ir0_end_block; ++ir0) {
+                        vec_dot(ne00, &tmp[ir0 - iir0], 0, 
+                               src0_row + ir0 * nb01, 0, src1_col, 0, 1);
+                    }
+                    
+                    // 批量写回结果
+                    memcpy(&dst_col[iir0], tmp, (ir0_end_block - iir0) * sizeof(float));
                 }
+            }
+        }
+    } else {
+        // === 多行处理路径 ===
+        for (int64_t iir1 = ir1_start; iir1 < ir1_end; iir1 += blck_1) {
+            for (int64_t iir0 = ir0_start; iir0 < ir0_end; iir0 += blck_0) {
+                const int64_t ir0_end_block = MIN(iir0 + blck_0, ir0_end);
+                
+                for (int64_t ir1 = iir1; ir1 < iir1 + blck_1 && ir1 < ir1_end; ir1 += num_rows_per_vec_dot) {
+                    // 修正的索引计算
+                    const int64_t i13 = ir1 / (ne12 * ne1);
+                    const int64_t i12 = (ir1 - i13 * ne12 * ne1) / ne1;
+                    const int64_t i11 = ir1 - i13 * ne12 * ne1 - i12 * ne1;
 
-                for (int cn = 0; cn < num_rows_per_vec_dot; ++cn) {
-                    memcpy(&dst_col[iir0 + cn * nb1 / nb0], tmp + (cn * 16), (MIN(iir0 + blck_0, ir0_end) - iir0) * sizeof(float));
+                    const int64_t i03 = i13 / r3;
+                    const int64_t i02 = i12 / r2;
+
+                    const char * src0_row = (const char*)src0->data + (i02 * nb02 + i03 * nb03);
+                    const char * src1_col = (const char*)wdata + 
+                        (src1_cont || src1->type != vec_dot_type ? 
+                         (i11 + i12 * ne11 + i13 * ne12 * ne11) * row_size : 
+                         (i11 * nb11 + i12 * nb12 + i13 * nb13));
+                    
+                    float * dst_col = (float*)((char*)dst->data + (i11 * nb1 + i12 * nb2 + i13 * nb3));
+
+                    // 向量化计算 - 一次处理多行
+                    for (int64_t ir0 = iir0; ir0 < ir0_end_block; ir0 += num_rows_per_vec_dot) {
+                        vec_dot(ne00, &tmp[ir0 - iir0], 16, 
+                               src0_row + ir0 * nb01, nb01, 
+                               src1_col, src1_col_stride, 
+                               MIN(num_rows_per_vec_dot, ir0_end_block - ir0));
+                    }
+
+                    // 安全的结果写回
+                    for (int cn = 0; cn < num_rows_per_vec_dot && ir1 + cn < ir1_end; ++cn) {
+                        const size_t copy_size = (ir0_end_block - iir0) * sizeof(float);
+                        memcpy(&dst_col[iir0 + cn * (nb1 / nb0)], tmp + (cn * 16), copy_size);
+                    }
                 }
             }
         }
     }
+
 #ifdef GGML_PERF_ENABLE
-        ggml_profiler_end_sampled("mul_mat_one_chunk_arm_acc", call_id++);
+    ggml_profiler_end_sampled("mul_mat_one_chunk_arm_acc", call_id++);
 #endif
 }
 
@@ -1345,7 +1382,7 @@ static void ggml_compute_forward_mul_mat(
     const struct ggml_tensor * src0 = dst->src[0];
     const struct ggml_tensor * src1 = dst->src[1];
 
-    // 线程安全的唯一类型记录
+    // 记录运算类型
     static int seen_types[GGML_TYPE_COUNT] = {0};
     static int first_call = 1;
     static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
@@ -1486,37 +1523,34 @@ UseGgmlGemm1:;
     }
 UseGgmlGemm2:;
 #endif
-
-    // This is the size of the first dimension of the result, so we can iterate that way. (see the ASSERT above, these are the same numbers)
+    // 矩阵维度变量名参考：https://github.com/ggml-org/llama.cpp/blob/master/CONTRIBUTING.md
+    // dst(M, N) = src0(K, M) * src1(K, N)
+    // 结果的第一维度 M
     const int64_t nr0 = ne0;
 
-    // This is the size of the rest of the dimensions of the result
+    // 结果的其他维度的大小 N
     const int64_t nr1 = ne1 * ne2 * ne3;
 
-    // Now select a reasonable chunk size.
+    // 基础的分块大小
     int chunk_size = 16;
 
-    // We need to step up the size if it's small
+    // 当某个维度为1，成为了向量乘法，此时增大分块
     if (nr0 == 1 || nr1 == 1) {
         chunk_size = 64;
     }
 
-    // distribute the work across the inner or outer loop based on which one is larger
-    // The number of chunks in the 0/1 dim.
-    // CEIL(nr0/chunk_size)
+    // 计算两个维度的分块后块数，向上取整
     int64_t nchunk0 = (nr0 + chunk_size - 1) / chunk_size;
     int64_t nchunk1 = (nr1 + chunk_size - 1) / chunk_size;
 
-    // If the chunking is poor for the number of threads on this setup, scrap the whole plan.  Re-chunk it by thread.
-    //   Also, chunking by thread was measured to have perform better on NUMA systems.  See https://github.com/ggml-org/llama.cpp/pull/6915
-    //   In theory, chunking should be just as useful on NUMA and non NUMA systems, but testing disagreed with that.
+    // 如果分块数相比线程数太少，没法利用全部线程算力，此时依据线程数进行分块
     if (nchunk0 * nchunk1 < nth * 4 || ggml_is_numa()) {
-        // distribute the thread work across the inner or outer loop based on which one is larger
+        // 哪个维度大就在哪个维度并行
         nchunk0 = nr0 > nr1 ? nth : 1; // parallelize by src0 rows
         nchunk1 = nr0 > nr1 ? 1 : nth; // parallelize by src1 rows
     }
 
-    // The number of elements in each chunk
+    // 每个分块的行列数
     const int64_t dr0 = (nr0 + nchunk0 - 1) / nchunk0;
     const int64_t dr1 = (nr1 + nchunk1 - 1) / nchunk1;
 
@@ -1524,29 +1558,32 @@ UseGgmlGemm2:;
     int current_chunk = ith;
 
     while (current_chunk < nchunk0 * nchunk1) {
-        const int64_t ith0 = current_chunk % nchunk0;
-        const int64_t ith1 = current_chunk / nchunk0;
+        const int64_t ith0 = current_chunk % nchunk0; // 在第0维的分块索引
+        const int64_t ith1 = current_chunk / nchunk0; // 在第1维的分块索引
 
+        // 当前线程两个维度上处理的范围
         const int64_t ir0_start = dr0 * ith0;
         const int64_t ir0_end = MIN(ir0_start + dr0, nr0);
-
         const int64_t ir1_start = dr1 * ith1;
         const int64_t ir1_end = MIN(ir1_start + dr1, nr1);
 
-        // dot kernels can handle 1 row and col at a time, but mmla kernels can process 2 rows and cols
+        // 如果支持IMM8的设备，可以一次处理两个向量点乘
         int64_t num_rows_per_vec_dot = vec_dot_num_rows;
 
-        // these checks are needed to avoid crossing dim1 boundaries
-        // can be optimized, but the logic would become more complicated, so keeping it like this for simplicity
+        // 当维度为奇数的时候，回退到一次处理一行
         if ((nr0 % 2 != 0) || (ne11 % 2 != 0) || ((ir0_end - ir0_start) % 2 != 0) || ((ir1_end - ir1_start) % 2 != 0)) {
             num_rows_per_vec_dot = 1;
         }
+
+        // 调用核心计算函数，处理一个分块
         ggml_compute_forward_mul_mat_one_chunk(params, dst, src0->type, num_rows_per_vec_dot, ir0_start, ir0_end, ir1_start, ir1_end);
 
+        // 如果线程数大于等于总块数，每个线程处理一个块就足够了，直接退出循环。
         if (nth >= nchunk0 * nchunk1) {
             break;
         }
 
+        // 获取下一个未处理的块
         current_chunk = atomic_fetch_add_explicit(&params->threadpool->current_chunk, 1, memory_order_relaxed);
     }
 #ifdef GGML_PERF_ENABLE
